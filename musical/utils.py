@@ -2,6 +2,8 @@
 
 import numpy as np
 import sklearn.decomposition._nmf as sknmf
+from sklearn.metrics import pairwise_distances
+from scipy.optimize import linear_sum_assignment
 
 ##################
 # Useful globals #
@@ -124,3 +126,45 @@ def beta_divergence(A, B, beta=1, square_root=False):
 def normalize_WH(W, H):
     normalization_factor = np.sum(W, 0)
     return W/normalization_factor, H*normalization_factor[:, None]
+
+
+def match_catalog_pair(W1, W2, metric='cosine'):
+    """Match a pair of signature catalogs.
+
+    Notes
+    ----------
+    1. Assume a 1-to-1 match between H1 and H2. This is an assignment problem
+    (See https://en.wikipedia.org/wiki/Assignment_problem).
+    2. W2 will be reordered to match with W1.
+    """
+    if W1.shape != W2.shape:
+        raise ValueError('W1 and W2 must be of the same shape.')
+
+    pdist = pairwise_distances(W1.T, W2.T, metric=metric)
+    W2_reordered_indices = linear_sum_assignment(pdist)[1]
+    return W2[:, W2_reordered_indices], W2_reordered_indices
+
+
+def simulate_count_matrix(W, H, method='multinomial'):
+    n_features, n_components = W.shape
+    _, n_samples = H.shape
+
+    # Just in case W and H are not properly normalized
+    W, H = normalize_WH(W, H)
+
+    if method == 'multinomial':
+        X_simulated = []
+        for h in H.T:
+            x = np.zeros(n_features, dtype=int)
+            for i in range(0, n_components):
+                N = int(round(h[i]))
+                indices = np.random.choice(n_features, size=N, replace=True, p=W[:, i])
+                x += np.array([np.sum(indices == j) for j in range(0, n_features)])
+            X_simulated.append(x)
+        X_simulated = np.array(X_simulated).T
+    else:
+        raise ValueError(
+            'Invalid method parameter: got %r instead of one of %r' %
+            (method, {'multinomial'}))
+
+    return X_simulated

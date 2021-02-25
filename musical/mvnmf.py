@@ -2,6 +2,7 @@
 
 import numpy as np
 from sklearn.preprocessing import normalize
+import scipy.stats as stats
 
 from .utils import beta_divergence, normalize_WH
 from .initialization import initialize_nmf
@@ -154,6 +155,9 @@ def _solve_mvnmf(X, W, H, lambda_tilde=1e-5, delta=1.0, gamma=1.0,
     ##############################################
     # First normalize W
     W, H = normalize_WH(W, H)
+    # Clip small values: important.
+    W = W.clip(EPSILON)
+    H = H.clip(EPSILON)
     # Calculate Lambda from labmda_tilde
     reconstruction_error = beta_divergence(X, W @ H, beta=1, square_root=False)
     volume = _volume_logdet(W, delta)
@@ -249,29 +253,202 @@ def _solve_mvnmf(X, W, H, lambda_tilde=1e-5, delta=1.0, gamma=1.0,
 
     return W, H, n_iter, converged, Lambda, losses, reconstruction_errors, volumes, line_search_steps, gammas
 
-def _solve_mvnmf_mu_matlab():
-    """Mvnmf solver
-
-    Solve mvnmf using the matlab code disjointconstraint_minvol_KLNMF.
-    """
-    return None
-
-def _solve_mvnmf_mu():
-    """Mvnmf solver
-
-    Python version of _solve_mvnmf_mu_matlab().
-    """
-    return None
-
-def _fit_mvnmf(X, W, H, solver='mvnmf-matlab', max_iter=100, eng=None):
-    """Mvnmf solver
-
-    Solve mvnmf with automatic hyperparameter selection.
-    """
-    return None
-
-
-
 
 class MVNMF:
-    pass
+    """A single run of mvNMF
+    """
+    def __init__(self,
+                 X,
+                 n_components,
+                 init='random',
+                 init_W_custom=None,
+                 init_H_custom=None,
+                 lambda_tilde=1e-5,
+                 delta=1.0,
+                 gamma=1.0,
+                 max_iter=200,
+                 min_iter=100,
+                 tol=1e-4,
+                 conv_test_freq=10,
+                 conv_test_baseline=None,
+                 verbose=0,
+                 eng=None
+                 ):
+        if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
+            X = np.array(X).astype(float)
+        self.X = X
+        self.n_components = n_components
+        self.init = init
+        if init_W_custom is not None:
+            if (type(init_W_custom) != np.ndarray) or (not np.issubdtype(init_W_custom.dtype, np.floating)):
+                init_W_custom = np.array(init_W_custom).astype(float)
+        if init_H_custom is not None:
+            if (type(init_H_custom) != np.ndarray) or (not np.issubdtype(init_H_custom.dtype, np.floating)):
+                init_H_custom = np.array(init_H_custom).astype(float)
+        self.init_W_custom = init_W_custom
+        self.init_H_custom = init_H_custom
+        self.lambda_tilde = lambda_tilde
+        self.delta = delta
+        self.gamma = gamma
+        self.max_iter = max_iter
+        self.min_iter = min_iter
+        self.tol = tol
+        self.conv_test_freq = conv_test_freq
+        self.conv_test_baseline = conv_test_baseline
+        self.verbose = verbose
+        self.eng = eng
+
+    def fit(self):
+        W_init, H_init = initialize_nmf(self.X, self.n_components,
+                                        init=self.init,
+                                        init_W_custom=self.init_W_custom,
+                                        init_H_custom=self.init_H_custom,
+                                        eng=self.eng)
+        self.W_init = W_init
+        self.H_init = H_init
+
+        (W, H, n_iter, converged, Lambda, losses, reconstruction_errors,
+            volumes, line_search_steps, gammas) = _solve_mvnmf(
+            X=self.X, W=self.W_init, H=self.H_init, lambda_tilde=self.lambda_tilde,
+            delta=self.delta, gamma=self.gamma, max_iter=self.max_iter,
+            min_iter=self.min_iter, tol=self.tol,
+            conv_test_freq=self.conv_test_freq,
+            conv_test_baseline=self.conv_test_baseline,
+            verbose=self.verbose)
+        self.W = W
+        self.H = H
+        self.n_iter = n_iter
+        self.converged = converged
+        self.Lambda = Lambda
+        self.loss_track = losses
+        self.reconstruction_error_track = reconstruction_errors
+        self.volume_track = volumes
+        self.line_search_step_track = line_search_steps
+        self.gamma_track = gammas
+        self.loss = losses[-1]
+        self.reconstruction_error = reconstruction_errors[-1]
+        self.volume = volumes[-1]
+
+        return self
+
+
+def _samplewise_error(X, X_reconstructed):
+    errors = []
+    for x, x_reconstructed in zip(X.T, X_reconstructed.T):
+        errors.append(beta_divergence(x, x_reconstructed, beta=1, square_root=False))
+    errors = np.array(errors)
+    return errors
+
+
+class wrappedMVNMF:
+    """mvNMF with automatic selection of lambda_tilde.
+    """
+    def __init__(self,
+                 X,
+                 n_components,
+                 lambda_tilde_grid,
+                 pthresh=0.05,
+                 init='random',
+                 init_W_custom=None,
+                 init_H_custom=None,
+                 delta=1.0,
+                 gamma=1.0,
+                 max_iter=200,
+                 min_iter=100,
+                 tol=1e-4,
+                 conv_test_freq=10,
+                 conv_test_baseline=None,
+                 verbose=0,
+                 eng=None
+                 ):
+        if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
+            X = np.array(X).astype(float)
+        self.X = X
+        self.n_components = n_components
+        self.lambda_tilde_grid = np.array(lambda_tilde_grid)
+        self.pthresh = pthresh
+        self.init = init
+        if init_W_custom is not None:
+            if (type(init_W_custom) != np.ndarray) or (not np.issubdtype(init_W_custom.dtype, np.floating)):
+                init_W_custom = np.array(init_W_custom).astype(float)
+        if init_H_custom is not None:
+            if (type(init_H_custom) != np.ndarray) or (not np.issubdtype(init_H_custom.dtype, np.floating)):
+                init_H_custom = np.array(init_H_custom).astype(float)
+        self.init_W_custom = init_W_custom
+        self.init_H_custom = init_H_custom
+        self.delta = delta
+        self.gamma = gamma
+        self.max_iter = max_iter
+        self.min_iter = min_iter
+        self.tol = tol
+        self.conv_test_freq = conv_test_freq
+        self.conv_test_baseline = conv_test_baseline
+        self.verbose = verbose
+        self.eng = eng
+
+    def fit(self):
+        ##################################################
+        ################# Initialization #################
+        ##################################################
+        W_init, H_init = initialize_nmf(self.X, self.n_components,
+                                        init=self.init,
+                                        init_W_custom=self.init_W_custom,
+                                        init_H_custom=self.init_H_custom,
+                                        eng=self.eng)
+        self.W_init = W_init
+        self.H_init = H_init
+
+        ##################################################
+        ################### Run mvNMF ####################
+        ##################################################
+        # Need to parallelize this part.
+        models = []
+        for lambda_tilde in self.lambda_tilde_grid:
+            if self.verbose:
+                print('==============================================')
+                print('Running mvNMF with lambda_tilde = %.5g......' % lambda_tilde)
+            model = MVNMF(self.X, self.n_components, init='custom',
+                          init_W_custom=self.W_init, init_H_custom=self.H_init,
+                          lambda_tilde=lambda_tilde, delta=self.delta, gamma=self.gamma,
+                          max_iter=self.max_iter, min_iter=self.min_iter, tol=self.tol,
+                          conv_test_freq=self.conv_test_freq, conv_test_baseline=self.conv_test_baseline,
+                          verbose=self.verbose, eng=self.eng)
+            model.fit()
+            models.append(model)
+        self.Lambda_grid = np.array([model.Lambda for model in models])
+        self.loss_grid = np.array([model.loss for model in models])
+        self.reconstruction_error_grid = np.array([model.reconstruction_error for model in models])
+        self.volume_grid = np.array([model.volume for model in models])
+        self.model_grid = models
+
+        ###################################################
+        ############# Select the best model ###############
+        ###################################################
+        # First calculate sample-wise errors
+        self.samplewise_reconstruction_errors_grid = np.array([
+            _samplewise_error(self.X, model.W @ model.H) for model in models
+        ])
+        # Then perform statistical tests
+        # Alternative tests we can use: ks_2samp, ttest_ind (perhaps on log errors)
+        #self.pvalue_grid = np.array([
+        #    stats.mannwhitneyu(self.samplewise_reconstruction_errors_grid[i, :],
+        #                       self.samplewise_reconstruction_errors_grid[i+1, :],
+        #                       alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
+        #])
+        self.pvalue_grid = np.array([
+            stats.ttest_ind(self.samplewise_reconstruction_errors_grid[i, :],
+                            self.samplewise_reconstruction_errors_grid[i+1, :],
+                            alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
+        ])
+        # Select the best model
+        index_selected = np.argmax(self.pvalue_grid < self.pthresh)
+        self.lambda_tilde = self.lambda_tilde_grid[index_selected]
+        self.model = models[index_selected]
+        self.W = self.model.W
+        self.H = self.model.H
+        self.Lambda = self.model.Lambda
+        self.loss = self.model.loss
+        self.reconstruction_error = self.model.reconstruction_error
+        self.volume = self.model.volume
+
+        return self
