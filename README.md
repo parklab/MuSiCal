@@ -54,3 +54,15 @@ wrappedModel = musical.mvnmf.wrappedMVNMF(X, n_components, lambda_tilde_grid, in
 wrappedModel.fit()
 ```
 where `lambda_tilde_grid` is a list of lambda_tide values that will be tested. The final selected MVNMF model can be accessed though `wrappedModel.model`. And the selected solution can be accessed through `wrappedModel.W` and `wrappedModel.H`.
+
+To save the solved model, one can use pickle:
+```
+import pickle
+with open('saved_model.pkl', 'wb') as f:
+    pickle.dump(model, f, pickle.HIGHEST_PROTOCOL)
+```
+To load saved models:
+```
+with open('saved_model.pkl', 'rb') as f:
+    model = pickle.load(f)
+```
