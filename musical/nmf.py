@@ -82,6 +82,8 @@ def _fit_mu(X, W, H, solver='1999-Lee', max_iter=200, min_iter=100, tol=1e-4,
     # Baseline of convergence test
     if conv_test_baseline is None:
         conv_test_baseline = loss_init
+    elif type(conv_test_baseline) is str and conv_test_baseline == 'min-iter':
+        pass
     else:
         conv_test_baseline = float(conv_test_baseline)
     # Iteration
@@ -97,7 +99,10 @@ def _fit_mu(X, W, H, solver='1999-Lee', max_iter=200, min_iter=100, tol=1e-4,
             H = H * (W.T @ (X/(W @ H)))
             H = H.clip(EPSILON)
             # Convergence test
-            if tol > 0 and n_iter % conv_test_freq == 0:
+            if n_iter == min_iter and conv_test_baseline == 'min-iter':
+                loss = beta_divergence(X, W @ H, beta=1, square_root=False)
+                conv_test_baseline = loss
+            if n_iter >= min_iter and tol > 0 and n_iter % conv_test_freq == 0:
                 loss = beta_divergence(X, W @ H, beta=1, square_root=False)
                 relative_loss_change = (loss_previous - loss) / conv_test_baseline
                 if (loss <= loss_previous) and (relative_loss_change <= tol):
@@ -121,7 +126,10 @@ def _fit_mu(X, W, H, solver='1999-Lee', max_iter=200, min_iter=100, tol=1e-4,
             H = H * (W.T @ (X/(W @ H))) / np.tile(np.sum(W, 0), (n_samples, 1)).T
             H = H.clip(EPSILON)
             # Convergence test
-            if tol > 0 and n_iter % conv_test_freq == 0:
+            if n_iter == min_iter and conv_test_baseline == 'min-iter':
+                loss = beta_divergence(X, W @ H, beta=1, square_root=False)
+                conv_test_baseline = loss
+            if n_iter >= min_iter and tol > 0 and n_iter % conv_test_freq == 0:
                 loss = beta_divergence(X, W @ H, beta=1, square_root=False)
                 relative_loss_change = (loss_previous - loss) / conv_test_baseline
                 if (loss <= loss_previous) and (relative_loss_change <= tol):
@@ -150,6 +158,8 @@ class NMF:
     1. We hide most optional parameters related to initialization. If one wants to change
     those optional parameters from default, they can first run initialize_nmf() with the desired
     parameters, and then supply W and H in the init=custom mode.
+    2. I removed eng from __init__ and did not set eng as an attribute. Otherwise pickle will have
+    a problem when saving the class instance, because pickle does not deal with matlab well.
     """
     def __init__(self,
                  X,
@@ -163,8 +173,8 @@ class NMF:
                  tol=1e-4,
                  conv_test_freq=10,
                  conv_test_baseline=None,
-                 verbose=0,
-                 eng=None
+                 verbose=0#,
+                 #eng=None
                  ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -186,14 +196,14 @@ class NMF:
         self.conv_test_freq = conv_test_freq
         self.conv_test_baseline = conv_test_baseline
         self.verbose = verbose
-        self.eng = eng
+        #self.eng = eng
 
-    def fit(self):
+    def fit(self, eng=None):
         W_init, H_init = initialize_nmf(self.X, self.n_components,
                                         init=self.init,
                                         init_W_custom=self.init_W_custom,
                                         init_H_custom=self.init_H_custom,
-                                        eng=self.eng)
+                                        eng=eng)
         self.W_init = W_init
         self.H_init = H_init
 
