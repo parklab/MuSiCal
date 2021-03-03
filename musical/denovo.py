@@ -8,6 +8,8 @@ from sklearn.metrics import silhouette_samples
 import scipy.stats as stats
 import warnings
 import time
+import multiprocessing
+import os
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
@@ -96,13 +98,14 @@ class DenovoSig:
                  conv_test_freq=100,
                  conv_test_baseline='min-iter',
                  tol=1e-10,
+                 ncpu=1,
+                 verbose=0,
                  # mvnmf specific:
                  mvnmf_hyperparameter_method='single', # single or all or fixed
                  mvnmf_lambda_tilde_grid=None,
                  mvnmf_delta=1.0,
                  mvnmf_gamma=1.0,
-                 mvnmf_pthresh=0.05,
-                 verbose=0
+                 mvnmf_pthresh=0.05
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -125,13 +128,108 @@ class DenovoSig:
         self.conv_test_freq = conv_test_freq
         self.conv_test_baseline = conv_test_baseline
         self.tol = tol
+        self.verbose=verbose
+        if ncpu is None:
+            ncpu = os.cpu_count()
+        self.ncpu=ncpu
         # mvnmf specific
         self.mvnmf_hyperparameter_method = mvnmf_hyperparameter_method
         self.mvnmf_lambda_tilde_grid = mvnmf_lambda_tilde_grid
         self.mvnmf_delta = mvnmf_delta
         self.mvnmf_gamma = mvnmf_gamma
         self.mvnmf_pthresh = mvnmf_pthresh
-        self.verbose=verbose
+
+    def _job(self, parameters):
+        """parameters = (index_replicate, n_components, eng, lambda_tilde)
+
+        Note that this function must be defined outside of self.fit(), otherwise we'll receive
+        'cannot pickle' errors.
+        """
+        index_replicate, n_components, eng, lambda_tilde = parameters
+        if self.method == 'nmf':
+            if self.bootstrap:
+                X_in = bootstrap_count_matrix(self.X)
+            else:
+                X_in = self.X
+            model = NMF(X_in,
+                        n_components,
+                        init=self.init,
+                        max_iter=self.max_iter,
+                        min_iter=self.min_iter,
+                        tol=self.tol,
+                        conv_test_freq=self.conv_test_freq,
+                        conv_test_baseline=self.conv_test_baseline
+                       )
+            model.fit(eng=eng)
+            if self.verbose:
+                print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
+            return model
+        elif self.method == 'mvnmf':
+            if self.mvnmf_hyperparameter_method == 'all':
+                if self.bootstrap:
+                    X_in = bootstrap_count_matrix(self.X)
+                else:
+                    X_in = self.X
+                model = wrappedMVNMF(X_in,
+                                     n_components,
+                                     init=self.init,
+                                     max_iter=self.max_iter,
+                                     min_iter=self.min_iter,
+                                     tol=self.tol,
+                                     conv_test_freq=self.conv_test_freq,
+                                     conv_test_baseline=self.conv_test_baseline,
+                                     lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
+                                     pthresh=self.mvnmf_pthresh,
+                                     delta=self.mvnmf_delta,
+                                     gamma=self.mvnmf_gamma
+                                    )
+                model.fit(eng=eng)
+                if self.verbose:
+                    print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
+                    print('Selected lambda_tilde = %.3g ' % model.lambda_tilde)
+                return model
+            elif self.mvnmf_hyperparameter_method == 'fixed':
+                if self.bootstrap:
+                    X_in = bootstrap_count_matrix(self.X)
+                else:
+                    X_in = self.X
+                model = MVNMF(X_in,
+                              n_components,
+                              init=self.init,
+                              max_iter=self.max_iter,
+                              min_iter=self.min_iter,
+                              tol=self.tol,
+                              conv_test_freq=self.conv_test_freq,
+                              conv_test_baseline=self.conv_test_baseline,
+                              lambda_tilde=self.mvnmf_lambda_tilde_grid,
+                              delta=self.mvnmf_delta,
+                              gamma=self.mvnmf_gamma
+                             )
+                model.fit(eng=eng)
+                if self.verbose:
+                    print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
+                return model
+            elif self.mvnmf_hyperparameter_method == 'single':
+                if self.bootstrap:
+                    X_in = bootstrap_count_matrix(self.X)
+                else:
+                    X_in = self.X
+                model = MVNMF(X_in,
+                              n_components,
+                              init=self.init,
+                              max_iter=self.max_iter,
+                              min_iter=self.min_iter,
+                              tol=self.tol,
+                              conv_test_freq=self.conv_test_freq,
+                              conv_test_baseline=self.conv_test_baseline,
+                              lambda_tilde=lambda_tilde,
+                              delta=self.mvnmf_delta,
+                              gamma=self.mvnmf_gamma
+                             )
+                model.fit(eng=eng)
+                if self.verbose:
+                    print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
+                return model
 
     def fit(self, eng=None):
         # 1. Run NMFs
@@ -149,48 +247,22 @@ class DenovoSig:
             ##################################################
             if self.verbose:
                 print('Extracting signatures for n_components = ' + str(n_components) + '..................')
-            models = []
             if self.method == 'nmf':
-                for index_replicate in range(0, self.n_replicates):
-                    if self.bootstrap:
-                        X_in = bootstrap_count_matrix(self.X)
-                    else:
-                        X_in = self.X
-                    model = NMF(X_in,
-                                n_components,
-                                init=self.init,
-                                max_iter=self.max_iter,
-                                min_iter=self.min_iter,
-                                tol=self.tol,
-                                conv_test_freq=self.conv_test_freq,
-                                conv_test_baseline=self.conv_test_baseline
-                               )
-                    model.fit(eng=eng)
-                    models.append(model)
+                parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                # Note that after workers are created, modifications of global variables won't be seen by the workers.
+                # Therefore, any modifications must be made before the workers are created.
+                # This is why we need to recreate workers for each n_components.
+                workers = multiprocessing.Pool(self.ncpu)
+                models = workers.map(self._job, parameters)
+                workers.close()
+                workers.join()
             elif self.method == 'mvnmf':
                 if self.mvnmf_hyperparameter_method == 'all':
-                    for index_replicate in range(0, self.n_replicates):
-                        if self.bootstrap:
-                            X_in = bootstrap_count_matrix(self.X)
-                        else:
-                            X_in = self.X
-                        model = wrappedMVNMF(X_in,
-                                             n_components,
-                                             init=self.init,
-                                             max_iter=self.max_iter,
-                                             min_iter=self.min_iter,
-                                             tol=self.tol,
-                                             conv_test_freq=self.conv_test_freq,
-                                             conv_test_baseline=self.conv_test_baseline,
-                                             lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
-                                             pthresh=self.mvnmf_pthresh,
-                                             delta=self.mvnmf_delta,
-                                             gamma=self.mvnmf_gamma
-                                            )
-                        model.fit(eng=eng)
-                        models.append(model)
-                        if self.verbose:
-                            print('Selected lambda_tilde = %.3g ' % model.lambda_tilde)
+                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                    workers = multiprocessing.Pool(self.ncpu)
+                    models = workers.map(self._job, parameters)
+                    workers.close()
+                    workers.join()
                 elif self.mvnmf_hyperparameter_method == 'single':
                     # Run first model, with hyperparameter selection
                     if self.bootstrap:
@@ -211,52 +283,25 @@ class DenovoSig:
                                          gamma=self.mvnmf_gamma
                                         )
                     model.fit(eng=eng)
-                    models.append(model)
+                    models = [model]
                     lambda_tilde = model.lambda_tilde
                     if self.verbose:
                         print('Selected lambda_tilde = %.3g. This lambda_tilde will be used for all subsequent mvNMF runs.' % model.lambda_tilde)
                     # Run the rest of the models, using preselected hyperparameter
-                    for index_replicate in range(1, self.n_replicates):
-                        if self.bootstrap:
-                            X_in = bootstrap_count_matrix(self.X)
-                        else:
-                            X_in = self.X
-                        model = MVNMF(X_in,
-                                      n_components,
-                                      init=self.init,
-                                      max_iter=self.max_iter,
-                                      min_iter=self.min_iter,
-                                      tol=self.tol,
-                                      conv_test_freq=self.conv_test_freq,
-                                      conv_test_baseline=self.conv_test_baseline,
-                                      lambda_tilde=lambda_tilde,
-                                      delta=self.mvnmf_delta,
-                                      gamma=self.mvnmf_gamma
-                                     )
-                        model.fit(eng=eng)
-                        models.append(model)
+                    parameters = [(index_replicate, n_components, eng, lambda_tilde) for index_replicate in range(1, self.n_replicates)]
+                    workers = multiprocessing.Pool(self.ncpu)
+                    _models = workers.map(self._job, parameters)
+                    workers.close()
+                    workers.join()
+                    models.extend(_models)
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     if type(self.mvnmf_lambda_tilde_grid) is not float:
                         raise ValueError('When mvnmf_hyperparameter_method is set to fixed, a single float value must be provided for mvnmf_lambda_tilde_grid.')
-                    for index_replicate in range(0, self.n_replicates):
-                        if self.bootstrap:
-                            X_in = bootstrap_count_matrix(self.X)
-                        else:
-                            X_in = self.X
-                        model = MVNMF(X_in,
-                                      n_components,
-                                      init=self.init,
-                                      max_iter=self.max_iter,
-                                      min_iter=self.min_iter,
-                                      tol=self.tol,
-                                      conv_test_freq=self.conv_test_freq,
-                                      conv_test_baseline=self.conv_test_baseline,
-                                      lambda_tilde=self.mvnmf_lambda_tilde_grid,
-                                      delta=self.mvnmf_delta,
-                                      gamma=self.mvnmf_gamma
-                                     )
-                        model.fit(eng=eng)
-                        models.append(model)
+                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(1, self.n_replicates)]
+                    workers = multiprocessing.Pool(self.ncpu)
+                    models = workers.map(self._job, parameters)
+                    workers.close()
+                    workers.join()
             ##############################################
             ####### Gather results from all models #######
             ##############################################

@@ -1,4 +1,11 @@
-"""Min-volume non-negative matrix factorization"""
+"""Min-volume non-negative matrix factorization
+
+TODO
+----------
+1. Parallelize wrappedMVNMF. The problem is that, DenovoSig already parallelizes
+    multiple runs of wrappedMVNMF. If inside wrappedMVNMF there is also parallelization,
+    then there will be problems. I'm not sure if there is a workaround. 
+"""
 
 import numpy as np
 from sklearn.preprocessing import normalize
