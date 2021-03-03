@@ -33,6 +33,8 @@ Note that matlab2019b or above is required for python3.7.
 Currently, MuSiCal has two Matlab dependencies: SPA initialization and mvNMF calculation. The mvNMF dependency has already been removed -- a python version of the mvNMF code is available. I will write the python code for SPA later, such that MuSiCal is completely Matlab independent.
 
 ## Usage
+
+### Running a single NMF
 For running NMF, one can use
 ```
 import musical
@@ -41,6 +43,8 @@ model.fit()
 ```
 Then the result can be accessed through `model.W` and `model.H`.
 
+
+### Running a single mvNMF with pre-specified `lambda_tilde`
 For running mvNMF, one can use
 ```
 model = musical.mvnmf.MVNMF(X, n_components, init='random', lambda_tilde=1e-5)
@@ -48,6 +52,7 @@ model.fit()
 ```
 The result can be accessed similarly through `model.W` and `model.H`.
 
+### Running a single mvNMF with automatic `lambda_tilde` selection
 For automatic hyperparameter selection in mvNMF, one can use
 ```
 wrappedModel = musical.mvnmf.wrappedMVNMF(X, n_components, lambda_tilde_grid, init='random')
@@ -55,6 +60,15 @@ wrappedModel.fit()
 ```
 where `lambda_tilde_grid` is a list of lambda_tide values that will be tested. The final selected MVNMF model can be accessed though `wrappedModel.model`. And the selected solution can be accessed through `wrappedModel.W` and `wrappedModel.H`.
 
+### De novo signature discovery
+To run de novo signature discovery with automatic rank selection, one can do
+```
+model = DenovoSig(X, min_n_components=2, max_n_components=20, init='random', method='nmf', n_replicates=100, ncpu=10)
+model.fit()
+```
+The selected rank is saved at `model.n_components`, with corresponding solutions at `model.W` and `model.H`, silhouette scores for each signature at `model.sil_score`. Solutions of all tested ranks are saved at `model.W_all` and `model.H_all`, with corresponding silhouette scores at `model.sil_score_all`.
+
+### Saving solved models
 To save the solved model, one can use pickle:
 ```
 import pickle

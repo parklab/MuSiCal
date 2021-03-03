@@ -1,10 +1,18 @@
-"""Min-volume non-negative matrix factorization"""
+"""Min-volume non-negative matrix factorization
+
+TODO
+----------
+1. Parallelize wrappedMVNMF. The problem is that, DenovoSig already parallelizes
+    multiple runs of wrappedMVNMF. If inside wrappedMVNMF there is also parallelization,
+    then there will be problems. I'm not sure if there is a workaround. 
+"""
 
 import numpy as np
 from sklearn.preprocessing import normalize
 import scipy.stats as stats
+import warnings
 
-from .utils import beta_divergence, normalize_WH
+from .utils import beta_divergence, normalize_WH, _samplewise_error
 from .initialization import initialize_nmf
 
 
@@ -329,24 +337,16 @@ class MVNMF:
         self.n_iter = n_iter
         self.converged = converged
         self.Lambda = Lambda
-        self.loss_track = losses
-        self.reconstruction_error_track = reconstruction_errors
-        self.volume_track = volumes
-        self.line_search_step_track = line_search_steps
-        self.gamma_track = gammas
+        #self.loss_track = losses
+        #self.reconstruction_error_track = reconstruction_errors
+        #self.volume_track = volumes
+        #self.line_search_step_track = line_search_steps
+        #self.gamma_track = gammas
         self.loss = losses[-1]
         self.reconstruction_error = reconstruction_errors[-1]
         self.volume = volumes[-1]
 
         return self
-
-
-def _samplewise_error(X, X_reconstructed):
-    errors = []
-    for x, x_reconstructed in zip(X.T, X_reconstructed.T):
-        errors.append(beta_divergence(x, x_reconstructed, beta=1, square_root=False))
-    errors = np.array(errors)
-    return errors
 
 
 class wrappedMVNMF:
@@ -360,7 +360,7 @@ class wrappedMVNMF:
     def __init__(self,
                  X,
                  n_components,
-                 lambda_tilde_grid,
+                 lambda_tilde_grid=None,
                  pthresh=0.05,
                  init='random',
                  init_W_custom=None,
@@ -379,7 +379,11 @@ class wrappedMVNMF:
             X = np.array(X).astype(float)
         self.X = X
         self.n_components = n_components
-        self.lambda_tilde_grid = np.array(lambda_tilde_grid)
+        if lambda_tilde_grid is None:
+            lambda_tilde_grid = np.array([1e-15, 1e-14, 1e-13, 1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1.0, 10.0, 100.0])
+        else:
+            lambda_tilde_grid = np.array(lambda_tilde_grid)
+        self.lambda_tilde_grid = lambda_tilde_grid
         self.pthresh = pthresh
         self.init = init
         if init_W_custom is not None:
@@ -455,7 +459,12 @@ class wrappedMVNMF:
                             alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
         ])
         # Select the best model
-        index_selected = np.argmax(self.pvalue_grid < self.pthresh)
+        if np.min(self.pvalue_grid) > self.pthresh:
+            warnings.warn('No p-value is smaller than or equal to %.3g. The largest lambda_tilde is selected. Enlarge the search grid of lambda_tilde.' % self.pthresh,
+                          UserWarning)
+            index_selected = len(self.pvalue_grid) - 1
+        else:
+            index_selected = np.argmax(self.pvalue_grid <= self.pthresh)
         self.lambda_tilde = self.lambda_tilde_grid[index_selected]
         self.model = models[index_selected]
         self.W = self.model.W

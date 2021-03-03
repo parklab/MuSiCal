@@ -168,3 +168,23 @@ def simulate_count_matrix(W, H, method='multinomial'):
             (method, {'multinomial'}))
 
     return X_simulated
+
+
+def bootstrap_count_matrix(X):
+    n_features, n_samples = X.shape
+    X_bootstrapped = []
+    for x in X.T:
+        N = int(round(np.sum(x)))
+        indices = np.random.choice(n_features, size=N, replace=True, p=x/N)
+        X_bootstrapped.append([np.sum(indices == i)
+                               for i in range(0, n_features)])
+    X_bootstrapped = np.array(X_bootstrapped).T
+    return X_bootstrapped
+
+
+def _samplewise_error(X, X_reconstructed):
+    errors = []
+    for x, x_reconstructed in zip(X.T, X_reconstructed.T):
+        errors.append(beta_divergence(x, x_reconstructed, beta=1, square_root=False))
+    errors = np.array(errors)
+    return errors

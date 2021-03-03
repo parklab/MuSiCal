@@ -3,9 +3,13 @@
 
 from .utils import beta_divergence
 from .plot import sigplot_bar
-from .nmf import _fit_mu, NMF
-from .mvnmf import _solve_mvnmf_matlab
+from .nmf import NMF
+from .mvnmf import MVNMF, wrappedMVNMF
+from .denovo import DenovoSig
 
-__all__ = ["beta_divergence",
-           "sigplot_bar",
-           "NMF"]
+__all__ = ['beta_divergence',
+           'sigplot_bar',
+           'NMF',
+           'MVNMF',
+           'wrappedMVNMF',
+           'DenovoSig']
