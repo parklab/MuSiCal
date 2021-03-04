@@ -116,7 +116,8 @@ class DenovoSig:
             min_n_components = 2
         self.min_n_components = min_n_components
         if max_n_components is None:
-            max_n_components = min(20, self.n_samples)
+            max_n_components = 20
+        max_n_components = min(max_n_components, self.n_samples)
         self.max_n_components = max_n_components
         self.n_components_all = np.arange(self.min_n_components, self.max_n_components + 1)
         self.init = init
