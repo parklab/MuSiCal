@@ -114,6 +114,8 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
     ################################################
     ############## Check parameters ################
     ################################################
+    # This is necassary when n_components is of type numpy.int64, which is not supported by matlab.
+    n_components = int(n_components)
     if init not in ['random', 'nndsvd', 'nndsvda', 'nndsvdar', 'cluster', 'spa', 'spa-matlab', 'custom']:
         raise ValueError('Invalid init parameter.')
 
