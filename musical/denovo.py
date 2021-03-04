@@ -297,7 +297,7 @@ class DenovoSig:
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     if type(self.mvnmf_lambda_tilde_grid) is not float:
                         raise ValueError('When mvnmf_hyperparameter_method is set to fixed, a single float value must be provided for mvnmf_lambda_tilde_grid.')
-                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(1, self.n_replicates)]
+                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
                     workers = multiprocessing.Pool(self.ncpu)
                     models = workers.map(self._job, parameters)
                     workers.close()
