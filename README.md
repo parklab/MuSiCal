@@ -30,7 +30,9 @@ python setup.py build --build-base="//anaconda3/envs/python37_musical/matlab2019
 ```
 Note that matlab2019b or above is required for python3.7.
 
-Currently, MuSiCal has two Matlab dependencies: SPA initialization and mvNMF calculation. The mvNMF dependency has already been removed -- a python version of the mvNMF code is available. I will write the python code for SPA later, such that MuSiCal is completely Matlab independent.
+Note that matlab is not required. If the python-matlab interface is not installed, MuSiCal should run just fine (not tested yet).
+
+Currently, there are two places where matlab codes could be used: SPA initialization and mvNMF calculation. We wrote python codes for both algorithms.
 
 ## Usage
 

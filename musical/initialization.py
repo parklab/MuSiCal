@@ -37,8 +37,45 @@ def _init_spa_matlab(X, n_components, normalize_X=True, eng=None, normalize_W=Tr
     H = nnls(X, W)
     return W, H, K
 
-def _init_spa():
-    return None
+
+def _spa(M, r):
+    """Python version of SPA algorithm
+
+    TODO
+    ----------
+    1. Currently this code is following Algorithm 1 in 2013_Gillis_Fast and Robust Recursive Algorithms for Separable Nonnegative Matrix Factorization.pdf.
+        The matlab code is more complete in several senses, e.g., there is an early stopping criterion.
+        We need to read the matlab code more carefully and see if we need to implement those too. Basically
+        we need to see if we should write the python code so that it is more similar to the matlab code.
+        I think in most cases the current python code should work just fine. I've done several tests showing that
+        the current python code produces equivalent results to the matlab code.
+    """
+    m, n = M.shape
+    # Normalize so that columns sum to 1
+    M = normalize(M, norm='l1', axis=0)
+    R = np.copy(M)
+    J = []
+    I = np.eye(m)
+    for j in range(1, r + 1):
+        normR = np.sum(R**2, 0)
+        jstar = np.argmax(normR)
+        uj = np.reshape(R[:, jstar], (-1, 1)) # column vector
+        R = (I - (uj @ uj.T)/np.sum(uj**2)) @ R
+        J.append(jstar)
+    return np.array(J)
+
+
+def _init_spa(X, n_components, normalize_X=True, normalize_W=True):
+    n_components = int(n_components)
+    if normalize_X:
+        X = normalize(X, norm='l1', axis=0) # This is redundant normalization.
+    K = _spa(X, n_components)
+    W = X[:, K]
+    if normalize_W:
+        W = normalize(W, norm='l1', axis=0)
+    H = nnls(X, W)
+    return W, H, K
+
 
 def _init_cluster(X, n_components, metric='cosine', linkage='average',
                   max_ncluster=100, min_nsample=1):
@@ -201,7 +238,9 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
                                    eng=eng, normalize_W=init_normalize_W)
         return W, H
     elif init == 'spa':
-        raise ValueError('Python version of spa has not been implemented yet. Use spa-matlab for init.')
+        W, H, _ = _init_spa(X, n_components, normalize_X=True,
+                            normalize_W=init_normalize_W)
+        return W, H
     elif init == 'custom':
         W = init_W_custom
         H = init_H_custom
