@@ -21,6 +21,7 @@ def _init_spa_matlab(X, n_components, normalize_X=True, eng=None, normalize_W=Tr
     eng.addpath(MATLABPATH, nargout=0)
 
     ### Calculation
+    n_components = int(n_components)
     if normalize_X:
         X = normalize(X, norm='l1', axis=0) # This is redundant normalization.
     if normalize_X:
