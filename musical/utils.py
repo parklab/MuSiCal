@@ -4,6 +4,9 @@ import numpy as np
 import sklearn.decomposition._nmf as sknmf
 from sklearn.metrics import pairwise_distances
 from scipy.optimize import linear_sum_assignment
+import itertools
+import scipy as sp
+from operator import itemgetter
 
 ##################
 # Useful globals #
@@ -188,3 +191,100 @@ def _samplewise_error(X, X_reconstructed):
         errors.append(beta_divergence(x, x_reconstructed, beta=1, square_root=False))
     errors = np.array(errors)
     return errors
+
+
+def match_signature_to_catalog(w, W_catalog, thresh=0.99, include_top=True):
+    """Match a single signature to possibly multiple signatures in the catalog.
+
+    Parameters
+    ----------
+    w : array-like of shape (n_features,)
+        The signature to be matched.
+
+    W_catalog : array-like of shape (n_features, n_sigs).
+        The signature catalog.
+
+    thresh : float
+        If cosine similarity to any signature in W_catalog is >= thresh, then w is matched to that signature.
+        If cosine similarity to all signatures in W_catalog is < thresh, then doublets will be considered.
+        If cosine similarity to any doublet is >= thresh, then w is matched to that doublet.
+        If cosine similarity to all doublets is < thresh, then triplets will be considered.
+
+    include_top : bool
+        If true, then the top matched signature will always be included when doublets or triplets are considered.
+        Otherwise, all possible doublets or triplets will be considered when applicable.
+
+
+    Returns
+    ----------
+    match : tuple
+        Index/indices of matched signature(s).
+
+    cos : float
+        Cosine similarity.
+
+    coef : array-like or None
+        When w is matched to doublets or triplets, coef is the NNLS coef for reconstructing w.
+        When w is matched to a single signature, coef is None.
+    """
+    n_features, n_sigs = W_catalog.shape
+    ###################################################
+    ###################### Singles ####################
+    ###################################################
+    ### Calculate cosine similarity to each signature in the catalog
+    data = []
+    for i, w_catalog in zip(range(0, n_sigs), W_catalog.T):
+        data.append([i, 1 - sp.spatial.distance.cosine(w, w_catalog)])
+    data = sorted(data, key=itemgetter(1), reverse=True)
+    match = (data[0][0],)
+    cos = data[0][1]
+    coef = None
+    # If the top matched signature has cosine similarity >= thresh, then return this signature.
+    if cos >= thresh:
+        return match, cos, coef
+
+    ###################################################
+    ##################### Doublets ####################
+    ###################################################
+    ### Otherwise, consider doublets
+    # First, construct the combinations of signatures to be tested.
+    sigs = range(0, n_sigs) # Indices of all signatures in the catalog.
+    top = data[0][0] # Index of the top matched signature.
+    combs = [] # All signature combinations to be tested.
+    if include_top:
+        sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
+        combs.extend([(top, sig) for sig in sigs_notop])
+    else:
+        combs.extend(list(itertools.combinations(sigs, 2)))
+    # Then, perform NNLS on all combinations to be tested, and select the best combination based on residual error.
+    data = []
+    for item in combs:
+        x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
+        data.append([item, x, resid])
+    data = sorted(data, key=itemgetter(2))
+    match = data[0][0]
+    coef = data[0][1]
+    cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
+    # If cosine similarity >= thresh, return the best doublet
+    if cos >= thresh:
+        return match, cos, coef
+
+    ###################################################
+    ##################### Triplets ####################
+    ###################################################
+    ### Otherwise, consider triplets
+    combs = []
+    if include_top:
+        sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
+        combs.extend([(top,) + item for item in list(itertools.combinations(sigs_notop, 2))])
+    else:
+        combs.extend(list(itertools.combinations(sigs, 3)))
+    data = []
+    for item in combs:
+        x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
+        data.append([item, x, resid])
+    data = sorted(data, key=itemgetter(2))
+    match = data[0][0]
+    coef = data[0][1]
+    cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
+    return match, cos, coef
