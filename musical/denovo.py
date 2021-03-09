@@ -15,7 +15,7 @@ from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
 from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error
 from .nnls import nnls
-
+from .refit import reassign
 
 def _gather_results(X, Ws, method='hierarchical'):
     """Gather NMF or mvNMF results
@@ -105,7 +105,20 @@ class DenovoSig:
                  mvnmf_lambda_tilde_grid=None,
                  mvnmf_delta=1.0,
                  mvnmf_gamma=1.0,
-                 mvnmf_pthresh=0.05
+                 mvnmf_pthresh=0.05, 
+                 use_catalog=True,
+                 catalog_name='COSMIC_v3p1_SBS_WGS',
+                 thresh_match = [0.99],
+                 thresh_new_sig = [0.84],
+                 min_contribution = [0.1],
+                 include_top = [False],
+                 use_denovo_H = False,
+                 method_sparse = 'llh',
+                 frac_thresh_base = [0.02],
+                 frac_thresh_keep = [0.3],
+                 frac_thresh = [0.05],
+                 llh_thresh = [0.65],
+                 exp_thresh = [8.]
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -139,6 +152,19 @@ class DenovoSig:
         self.mvnmf_delta = mvnmf_delta
         self.mvnmf_gamma = mvnmf_gamma
         self.mvnmf_pthresh = mvnmf_pthresh
+        self.use_catalog = use_catalog
+        self.catalog_name = catalog_name
+        self.thresh_match = thresh_match
+        self.thresh_new_sig = thresh_new_sig
+        self.min_contribution = min_contribution
+        self.include_top = include_top
+        self.use_denovo_H = use_denovo_H
+        self.method_sparse = method_sparse
+        self.frac_thresh_base = frac_thresh_base
+        self.frac_thresh_keep = frac_thresh_keep
+        self.frac_thresh = frac_thresh
+        self.llh_thresh = llh_thresh
+        self.exp_thresh = exp_thresh
 
     def _job(self, parameters):
         """parameters = (index_replicate, n_components, eng, lambda_tilde)
@@ -380,3 +406,79 @@ class DenovoSig:
         self.samplewise_reconstruction_errors = self.samplewise_reconstruction_errors_all[self.n_components]
 
         return self
+
+    def set_params(self, 
+                   use_catalog = None,
+                   catalog_name = None,
+                   thresh_match = None,
+                   thresh_new_sig = None,
+                   min_contribution = None,
+                   include_top = None,
+                   use_denovo_H = None,
+                   method_sparse = None, 
+                   frac_thresh_base = None,
+                   frac_thresh_keep = None,
+                   frac_thresh = None,
+                   llh_thresh = None, 
+                   exp_thresh = None):
+
+        if use_catalog != None:
+           self.use_catalog = use_catalog
+        if catalog_name != None:
+           self.catalog_name = catalog_name
+        if thresh_match != None:
+           self.thresh_match = thresh_match
+        if thresh_new_sig != None:
+           self.thresh_new_sig = thresh_new_sig
+        if min_contribution != None:
+           self.min_contribution = min_contribution
+        if include_top != None:
+            self.include_top = include_top
+        if use_denovo_H != None:
+            self.use_denovo_H = use_denovo_H
+        if method_sparse != None:
+            self.method_sparse = method_sparse
+        if frac_thresh_base != None:
+            self.frac_thresh_base = frac_thresh_base
+        if frac_thresh_keep != None:
+            self.frac_thresh_keep = frac_thresh_keep
+        if frac_thresh != None:
+            self.frac_thresh = frac_thresh
+        if llh_thresh != None:
+            self.llh_thresh = llh_thresh
+        if exp_thresh != None:
+            self.exp_thresh = exp_thresh
+
+        return self
+
+    def reassign_post_denovo(self):
+        W_s, H_s, frac_thresh_base_all, frac_thresh_keep_all, frac_thresh_all, llh_thresh_all, exp_thresh_all, thresh_match_all, thresh_new_sig_all, min_contribution_all, include_top_all = reassign(self)
+        if frac_thresh_base_all.size == 1:
+            self.W_s = W_s[0]
+            self.H_s = H_s[0]
+        else:
+            self.W_s_all = W_s
+            self.H_s_all = H_s
+            self.frac_thresh_base_all = frac_thresh_base_all 
+            self.frac_thresh_all = frac_thresh_all
+            self.llh_thresh_all = llh_thresh_all
+            self.exp_thresh_all = exp_thresh_all
+            if thresh_match_all.size > 0:
+                 self.thresh_match_all = thresh_match_all
+            if thresh_new_sig_all.size > 0:
+                self.thresh_new_sig_all = thresh_new_sig_all
+            if min_contribution_all.size > 0:
+                self.min_contribution_all = min_contribution_all
+            if include_top_all.size > 0:
+                self.include_top_all = include_top_all
+
+    def validate_post_denovo(self, validation_output_file = None):
+        W_simul, H_simul, W_s, H_s, frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh, thresh_match, thresh_new_sig, min_contribution, include_top  = validate(self, validation_output_file)
+        self.W_s = W_s
+        self.H_s = H_s
+
+        if self.frac_thresh_base_all.size > 0:
+            self.set_params(frac_thresh_base = frac_thresh_base, frac_thresh_keep = frac_thresh_keep, frac_thresh = frac_thresh, llh_thresh = llh_thresh, exp_thresh = exp_thresh)
+            if self.use_catalog:
+                self.set_params(thresh_match = thresh_match, thresh_new_sig = thresh_new_sig, min_contribution = min_contribution, include_top = include_top)
+ 

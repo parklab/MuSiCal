@@ -193,7 +193,7 @@ def _samplewise_error(X, X_reconstructed):
     return errors
 
 
-def match_signature_to_catalog(w, W_catalog, thresh=0.99, include_top=True):
+def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1, include_top=True):
     """Match a single signature to possibly multiple signatures in the catalog.
 
     Parameters
@@ -260,6 +260,8 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, include_top=True):
     data = []
     for item in combs:
         x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
+        if np.amin(x) < min_contribution:
+            continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
     match = data[0][0]
@@ -282,6 +284,8 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, include_top=True):
     data = []
     for item in combs:
         x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
+        if np.amin(x) < min_contribution: 
+            continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
     match = data[0][0]
