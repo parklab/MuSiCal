@@ -25,21 +25,21 @@ def refit_matrix(X, W, method = 'llh',
        "none" for simple nnls
    see nnls_sparse for other parameters
    """
-   # we could consider moving nnls function in here from nnls.py
-   if method == 'none':
-      H = nnls(X, W)
-   else:
-       H = []
-       for x in X.T:
+   # we could consider moving nnls function in here from nnls.py. I added it here
+
+   H = []
+   for x in X.T:
+       if method == 'none':
+           h, _ = sp.optimize.nnls(W, x)
+       else:
            h = nnls_sparse(x = x, W = W, method = method, 
                           frac_thresh_base = frac_thresh_base,
                           frac_thresh_keep = frac_thresh_keep,
                           frac_thresh = frac_thresh,
                           llh_thresh = llh_thresh,
                           exp_thresh = exp_thresh)
-           H.append(h)
-       H = np.array(H) 
-
+       H.append(h)
+   H = np.array(H) 
    H = H.T 
    reconstruction_error = beta_divergence(X, W @ H, beta=1, square_root=False)
 
@@ -123,7 +123,7 @@ def param_search_same_length(v1, v2, v3, v4, v5 = None):
     else:
         return v1, v2, v3, v4, v5, n_params
                  
-def reassign(model):
+def reassign(model):  # maybe we should move this function into denovo.py
 
     # We need to write here an if to give error if parameters are not set
    
@@ -141,6 +141,11 @@ def reassign(model):
     exp_thresh = model.exp_thresh #8.
 
     """
+    Example for running without denovo calculation
+    model = musical.DenovoSig(X, min_n_components=min_n_components, max_n_components = max_n_components, init='nndsvdar', method='nmf', n_replicates=10, ncpu=2)
+    model.W = W_user # Set the signature matrix
+    model.run_reassign()
+
     Reassignment is done by first determining the signatures that will be used in refitting
     and then using them to refit X. 
     
@@ -172,6 +177,11 @@ def reassign(model):
     exp_thresh : 1-d numpy array
     """
 
+    print(frac_thresh_base)
+    print(frac_thresh_keep)
+    print(frac_thresh)
+    print(llh_thresh)
+    print(exp_thresh)
     frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh, n_params_sparse = param_search_same_length(frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh)
     thresh_match, thresh_new_sig, min_contribution, include_top, n_params_match = param_search_same_length(thresh_match, thresh_new_sig, min_contribution, include_top)
 
@@ -180,7 +190,7 @@ def reassign(model):
     signatures = np.array(catalog.signatures)
 
     W = model.W
-    H = model.H
+
     X = model.X
 
     # here add error statement if W and W_catalog do not match in size
@@ -214,7 +224,7 @@ def reassign(model):
 
                 # for each signature in the signature matrix match to the catalog if the cosine similarity
                 # is smaller than the value thresh_new_sig use the denovo signature instead 
-                for w in model.W.T:
+                for w in W.T:
                     match_inds, cos, coef = match_signature_to_catalog(w, W_catalog, thresh = thresh_match[j], min_contribution = min_contribution[j], include_top = include_top[j])                    
                     match_inds = np.asarray(match_inds)
                     if cos < thresh_new_sig[j]: 
@@ -271,7 +281,7 @@ def reassign(model):
 
         else:
             # without catalog W of the model is used
-            W_s_this = model.W
+            W_s_this = W
             W_s_this = np.array(W_s_this)
             signames_this = ["Sig_D" + str(i) for i in range(0, W_s_this.shape[1])]
 
