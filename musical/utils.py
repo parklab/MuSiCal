@@ -145,7 +145,7 @@ def match_catalog_pair(W1, W2, metric='cosine'):
 
     pdist = pairwise_distances(W1.T, W2.T, metric=metric)
     W2_reordered_indices = linear_sum_assignment(pdist)[1]
-    return W2[:, W2_reordered_indices], W2_reordered_indices
+    return W2[:, W2_reordered_indices], W2_reordered_indices, pdist
 
 
 def simulate_count_matrix(W, H, method='multinomial'):
@@ -292,3 +292,6 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     coef = data[0][1]
     cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
     return match, cos, coef
+
+def save_signature_exposure_tables(model):
+    model.W

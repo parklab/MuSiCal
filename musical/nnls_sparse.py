@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 from .nnls import nnls
-from .utils import match_catalog_pair
 from sklearn.metrics import pairwise_distances
 
 
@@ -124,14 +123,13 @@ def _nnls_sparse_delta(x, h, W, delta=0.):
     h_fracs = h/n
     return h, h_fracs, inds_zero, inds_sig
    
-def nnls_sparse(x, W, h = None, method='llh',
+def nnls_sparse(x, W, method='llh',
                 frac_thresh_base=0.02, frac_thresh_keep=0.4,
                 frac_thresh=0.05, llh_thresh=0.65, exp_thresh=8.):
                
     n_components = W.shape[1]
     n = np.sum(x)
-    if h is None:
-        h, _ = sp.optimize.nnls(W, x)
+    h, _ = sp.optimize.nnls(W, x)
     h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(x, h, W, delta = frac_thresh_base)
         
     inds_all = np.arange(0, n_components)
@@ -156,6 +154,8 @@ def nnls_sparse(x, W, h = None, method='llh',
                                      h_fracs[inds_sig]):
                 if lh > llh_thresh or frac > frac_thresh_keep:
                     inds_sig_tmp.append(ind)
+                else:
+                    print('no pass')
             inds_sig = np.sort(np.array(inds_sig_tmp))
             inds_zero = np.array([i for i in inds_all
                                   if i not in inds_sig])
