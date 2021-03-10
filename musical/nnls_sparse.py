@@ -154,8 +154,6 @@ def nnls_sparse(x, W, method='llh',
                                      h_fracs[inds_sig]):
                 if lh > llh_thresh or frac > frac_thresh_keep:
                     inds_sig_tmp.append(ind)
-                else:
-                    print('no pass')
             inds_sig = np.sort(np.array(inds_sig_tmp))
             inds_zero = np.array([i for i in inds_all
                                   if i not in inds_sig])
