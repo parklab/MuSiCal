@@ -2,12 +2,11 @@
 
 import numpy as np
 from .nnls import nnls
-from .utils import match_signature_to_catalog
+from .utils import match_signature_to_catalog, beta_divergence
 from .nnls_sparse import nnls_sparse
 from .catalog import load_catalog
 
-def refit_matrix(X, W, H = None,
-                 method = 'llh',
+def refit_matrix(X, W, method = 'llh',
                  frac_thresh_base = 0.02,
                  frac_thresh_keep = 0.3, 
                  frac_thresh = 0.05,
@@ -26,21 +25,25 @@ def refit_matrix(X, W, H = None,
        "none" for simple nnls
    see nnls_sparse for other parameters
    """
+   # we could consider moving nnls function in here from nnls.py. I added it here
 
-   if method == 'none':
-      H_s = nnls(X, W)
+   H = []
+   for x in X.T:
+       if method == 'none':
+           h, _ = sp.optimize.nnls(W, x)
+       else:
+           h = nnls_sparse(x = x, W = W, method = method, 
+                          frac_thresh_base = frac_thresh_base,
+                          frac_thresh_keep = frac_thresh_keep,
+                          frac_thresh = frac_thresh,
+                          llh_thresh = llh_thresh,
+                          exp_thresh = exp_thresh)
+       H.append(h)
+   H = np.array(H) 
+   H = H.T 
+   reconstruction_error = beta_divergence(X, W @ H, beta=1, square_root=False)
 
-   H_s = []
-   if H is None: 
-       for x in X.T:
-           h_s = nnls_sparse(x = x, W = W, method = method)
-           H_s.append(h_s)
-   else:    
-       for x, h in zip(X.T, H.T):
-           h_s = nnls_sparse(x = x, W = W, h = h, method = method)
-           H_s.append(h_s)
-   H_s = np.array(H_s) 
-   return H_s.T
+   return H, reconstruction_error
 
 def param_search_same_length(v1, v2, v3, v4, v5 = None):
     """
@@ -115,13 +118,13 @@ def param_search_same_length(v1, v2, v3, v4, v5 = None):
     else: 
         raise ValueError('parameters should be either same size or only one variable')
 
-    if v5 == None:
+    if s5 == None:
         return v1, v2, v3, v4, n_params
     else:
         return v1, v2, v3, v4, v5, n_params
                  
-def reassign(model):
- 
+def reassign(model):  # maybe we should move this function into denovo.py
+
     # We need to write here an if to give error if parameters are not set
    
     use_catalog = model.use_catalog #True, 
@@ -130,7 +133,6 @@ def reassign(model):
     thresh_new_sig = model.thresh_new_sig #0.84,
     min_contribution = model.min_contribution #0.1,
     include_top = model.include_top #False, 
-    use_denovo_H = model.use_denovo_H #False, 
     method_sparse = model.method_sparse #'llh'
     frac_thresh_base = model.frac_thresh_base #0.02, 
     frac_thresh_keep = model.frac_thresh_keep #0.3, 
@@ -139,6 +141,11 @@ def reassign(model):
     exp_thresh = model.exp_thresh #8.
 
     """
+    Example for running without denovo calculation
+    model = musical.DenovoSig(X, min_n_components=min_n_components, max_n_components = max_n_components, init='nndsvdar', method='nmf', n_replicates=10, ncpu=2)
+    model.W = W_user # Set the signature matrix
+    model.run_reassign()
+
     Reassignment is done by first determining the signatures that will be used in refitting
     and then using them to refit X. 
     
@@ -163,10 +170,6 @@ def reassign(model):
     include top : boolean
     
     - Parameters that are used when introducing sparsity (see refit function)
-    use_denovo_H : boolean 
-        Determines whether the H from denovo calculation will be used to restrict the signatures
-        that are considered in the NNLS calculation. If True the relative H values of each
-        signature is required to be greater than frac_thresh_base before the calculation
     frac_thresh_base : 1-d numpy array
     frac_thresh_keep :  1-d numpy array
     frac_thresh : 1-d numpy array
@@ -174,104 +177,87 @@ def reassign(model):
     exp_thresh : 1-d numpy array
     """
 
-    frac_thresh_base, frac_thresh_keep, frach_thresh, llh_thresh, exp_thresh, n_params_sparse = param_search_same_length(frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh)
+    print(frac_thresh_base)
+    print(frac_thresh_keep)
+    print(frac_thresh)
+    print(llh_thresh)
+    print(exp_thresh)
+    frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh, n_params_sparse = param_search_same_length(frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh)
     thresh_match, thresh_new_sig, min_contribution, include_top, n_params_match = param_search_same_length(thresh_match, thresh_new_sig, min_contribution, include_top)
 
-    W_catalog = np.array(load_catalog(catalog_name).W)
+    catalog = load_catalog(catalog_name)
+    W_catalog = np.array(catalog.W)
+    signatures = np.array(catalog.signatures)
+
     W = model.W
-    H = model.H
+
     X = model.X
 
+    # here add error statement if W and W_catalog do not match in size
+    signames = {}
     W_s = {}
     H_s = {}
     index_param = 0
+
+    reconstruction_error_s_all = []
 
     frac_thresh_base_all = []
     frac_thresh_keep_all = []
     frac_thresh_all = []
     llh_thresh_all = []
     exp_thresh_all = []
-     
-    # Define the signatures that will be used for refitting
-    if use_catalog:
-        thresh_match_all = []
-        thresh_new_sig_all = []
-        min_contribution_all = []
-        include_top_all = []
+
+    # these are returned empty if use_catalog is False     
+    thresh_match_all = []
+    thresh_new_sig_all = []
+    min_contribution_all = []
+    include_top_all = []
      
 
     for i in np.arange(0, n_params_sparse): # loop over parameters used in nnls_spars
         if use_catalog:
             for j in np.arange(0, n_params_match): # loop over parameters used in catalog match
-                inds = []
-                cosines = []
-                coefs = []
-                inds_w_model = []
+                inds = [] # indices of the catalog to which W model matches to
+
+                inds_w_model_new_sig = [] # indices of W from the model that are not matched to the catalog
                 ind_w_model = 0
 
                 # for each signature in the signature matrix match to the catalog if the cosine similarity
                 # is smaller than the value thresh_new_sig use the denovo signature instead 
-                for w in model.W.T:
+                for w in W.T:
                     match_inds, cos, coef = match_signature_to_catalog(w, W_catalog, thresh = thresh_match[j], min_contribution = min_contribution[j], include_top = include_top[j])                    
                     match_inds = np.asarray(match_inds)
                     if cos < thresh_new_sig[j]: 
-                        # instead of adding the catalog index use -900 
-                        # to keep track of signatures that are not matched
-                        inds = np.append(inds, -900) 
-                        cosines = np.append(cosines, 1)
-                        coefs = np.append(coefs, 1)
-                        inds_w_model = np.append(inds_w_model, ind_w_model)
+                        inds_w_model_new_sig.append(ind_w_model)
                     else:
-                        inds = np.append(inds, match_inds)
-                        cosines = np.append(cosines, np.repeat(cos, len(coef)))            
-                        coefs = np.append(coefs, coef)
-                        inds_w_model = np.append(inds_w_model, np.repeat(ind_w_model, len(coef)))
+                        inds.append(match_inds)
                     ind_w_model = ind_w_model + 1 
         
-                inds_w_model = np.array([int(index) for index in inds_w_model]) # it was saving them as double for some reason
-                inds = np.array([int(index) for index in inds]) # it was saving them as double for some reason
 
-                # more than one denovo signature might be matched to the same signature in the catalog                
-                unique_inds = np.unique(inds, axis=0)
-
-                if(np.asarray(np.where(inds == -900)).size > 0):
-                    # if there are new signatures first add them to the columns/rows of W/H
-                    W_s_this = W[:, inds_w_model[inds == -900]] 
-                    unique_inds = unique_inds[unique_inds != -900]
-                    if use_denovo_H:
-                        H_s_ini_this = H[inds_w_model[inds == -900],:]         
+                inds_w_model_new_sig = np.array(inds_w_model_new_sig)
+                if(len(inds_w_model_new_sig) > 0):
+                    W_s_this = W[:, inds_w_model_new_sig]
+                    signames_this = ["Sig_N" + str(i) for i in range(0, inds_w_model_new_sig.size)]
                 else:
                     W_s_this = []
-                    if use_denovo_H:
-                         H_s_ini_this = [] # for keeping track of how the denovo exposure should be shared across signatures after matching to multiple
+                    signames_this = []
 
+                unique_inds = np.unique(inds, axis=0).flatten()
                 if W_s_this is None: 
                     W_s_this = W_catalog[:, unique_inds]
-                else:
+                    signames_this = signatures[unique_inds]
+                elif(unique_inds.size > 0):
                     W_s_this = np.concatenate((W_s_this, W_catalog[:, unique_inds]), axis = 1)
+                    signames_this.append(signatures[unique_inds])
 
-                if use_denovo_H:
-                    # for each unique signature in the catalog more than one denovo signature may be matched
-                    # here we add up exposures of different denovo signatures weighted with their NNLS coefficient
-                    for ind_this in unique_inds: 
-                        inds_w_model_this = inds_w_model[inds == ind_this]
-                        coefs_this = coefs[inds == ind_this]
-                        h = np.sum(np.transpose(coefs_this) * H[inds_w_model_this,:], axis = 0)
-                        if H_s_ini_this is None:
-                            H_s_ini_this = [h]
-                        else:
-                            H_s_ini_this = np.concatenate((H_s_ini_this, [h]), axis = 0)
-                    H_s_ini_this = H_s_ini_this
-                else:
-                     H_s_ini_this = None
 
-                H_s_this = refit_matrix(X, W_s_this, H_s_ini_this, 
-                                        method = method_sparse,
-                                        frac_thresh_base = frac_thresh_base[i], 
-                                        frac_thresh_keep = frac_thresh_keep[i], 
-                                        frac_thresh = frac_thresh[i], 
-                                        llh_thresh = llh_thresh[i], 
-                                        exp_thresh = exp_thresh[i])
+                H_s_this, reco_error = refit_matrix(X, W_s_this, 
+                                                    method = method_sparse,
+                                                    frac_thresh_base = frac_thresh_base[i], 
+                                                    frac_thresh_keep = frac_thresh_keep[i], 
+                                                    frac_thresh = frac_thresh[i], 
+                                                    llh_thresh = llh_thresh[i], 
+                                                    exp_thresh = exp_thresh[i])
 
                 # a flat paramater array following the same indices as W_s and H_s are generated
                 # to be used in validation step to pick the best parameters once the best W_s and H_s are determined
@@ -284,40 +270,41 @@ def reassign(model):
                 thresh_new_sig_all = np.append(thresh_new_sig_all, thresh_new_sig[j])
                 min_contribution_all = np.append(min_contribution_all, min_contribution[j])
                 include_top_all = np.append(include_top_all,include_top[j])
+                reconstruction_error_s_all = np.append(reconstruction_error_s_all, reco_error)
+
                 # add W_s for this paramater set to the list of W_s and same for H_s
                 W_s[index_param] = W_s_this
                 H_s[index_param] = H_s_this
+                signames[index_param] = signames_this
                 index_param = index_param + 1
 
 
         else:
-            # without catalog W and H (if use_denovo is True) are from denovo model are used
-            W_s_this = model.W
-            if use_denovo_H: 
-                H_s_ini_this = model.H
-            else:
-                H_s_ini_this = None
-
+            # without catalog W of the model is used
+            W_s_this = W
             W_s_this = np.array(W_s_this)
-            H_s_ini_this = np.array(H_s_ini_this).T
+            signames_this = ["Sig_D" + str(i) for i in range(0, W_s_this.shape[1])]
 
-            H_s_this = refit_matrix(X, W_s_this, H_s_ini_this,
-                                        method = method_sparse,
-                                        frac_thresh_base = frac_thresh_base[i],
-                                        frac_thresh_keep = frac_thresh_keep[i],
-                                        frac_thresh = frac_thresh[i],
-                                        llh_thresh = llh_thresh[i],
-                                        exp_thresh = exp_thresh[i])
-            index_param = index_param + 1
+            H_s_this, reco_error = refit_matrix(X, W_s_this,
+                                               method = method_sparse,
+                                               frac_thresh_base = frac_thresh_base[i],
+                                               frac_thresh_keep = frac_thresh_keep[i],
+                                               frac_thresh = frac_thresh[i],
+                                               llh_thresh = llh_thresh[i],
+                                               exp_thresh = exp_thresh[i])
             frac_thresh_base_all = np.append(frac_thresh_base_all, frac_thresh_base[i])
             frac_thresh_keep_all = np.append(frac_thresh_keep_all, frac_thresh_keep[i])
             frac_thresh_all = np.append(frac_thresh_all, frac_thresh[i])
             llh_thresh_all = np.append(llh_thresh_all, llh_thresh[i])
-            exp_thresh_all = append(exp_thresh_all, exp_thresh[i])
+            exp_thresh_all = np.append(exp_thresh_all, exp_thresh[i])
+            reconstruction_error_s_all = np.append(reconstruction_error_s_all, reco_error)
             W_s[index_param] = W_s_this
             H_s[index_param] = H_s_this
+            signames[index_param] = signames_this
             index_param = index_param + 1
-    return W_s, H_s, frac_thresh_base_all, frac_thresh_keep_all, frac_thresh_all, llh_thresh_all, exp_thresh_all, thresh_match_all, thresh_new_sig_all, min_contribution_all, include_top_all 
+
+    n_grid = index_param
+    return W_s, H_s, signames, reconstruction_error_s_all, n_grid, frac_thresh_base_all, frac_thresh_keep_all, frac_thresh_all, llh_thresh_all, exp_thresh_all, thresh_match_all, thresh_new_sig_all, min_contribution_all, include_top_all 
  
    
     
