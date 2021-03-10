@@ -3,7 +3,7 @@ import pickle
 from .utils import beta_divergence, simulate_count_matrix, match_catalog_pair
 
 
-def validate(model, validation_output_file, measure_dist = 'cosine'):
+def validate(model, validation_output_file, metric_dist = 'cosine'):
 
     """
     This function validates the reassignment (H_s and W_s matrices) in a model
@@ -19,7 +19,7 @@ def validate(model, validation_output_file, measure_dist = 'cosine'):
     creating a model and setting W_s and H_s values to a table of your choosing
     """
     if validation_output_file is not None:
-       list_models_simul = []
+       list_models_simul = {}
        save_models = True
     else:
        save_models = False
@@ -36,7 +36,7 @@ def validate(model, validation_output_file, measure_dist = 'cosine'):
             X_simul_this = simulate_count_matrix(W_s_this, H_s_this)
             model_simul = model.clone_model(X_simul_this, grid_index = i)
             model_simul.fit()
-            W_simul_reordered, reordered_indices, pdist = match_catalog_pair(model.W, model_simul.W, measure = measure_dist)
+            W_simul_reordered, reordered_indices, pdist = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
             model_simul.W = W_simul_reordered
             model_simul.H = model_simul.H[reordered_indices,:]
             error_W_all.append(beta_divergence(model.W, model_simul.W, beta=1))

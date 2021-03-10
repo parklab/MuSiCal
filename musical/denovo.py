@@ -483,8 +483,8 @@ class DenovoSig:
         if self.use_catalog:
             model_new.set_params(thresh_match = self.thresh_match_all[grid_index],
                                  thresh_new_sig = self.thresh_new_sig_all[grid_index],
-                                 min_contribution = self.min_contribution[grid_index],
-                                 include_top = self.include_top[grid_index])
+                                 min_contribution = self.min_contribution_all[grid_index],
+                                 include_top = self.include_top_all[grid_index])
         return model_new
 
     def reassign_post_denovo(self, clear = True):
@@ -578,8 +578,8 @@ class DenovoSig:
                             exp_thresh = self.exp_thresh_all[best_grid_index])
             if self.use_catalog:
                 self.set_params(thresh_match = self.thresh_match_all[best_grid_index], 
-                                thresh_new_sig = self.thresh_new_sig[best_grid_index], 
-                                min_contribution = self.min_contribution[best_grid_index], 
-                                include_top = self.include_top[best_grid_index])
+                                thresh_new_sig = self.thresh_new_sig_all[best_grid_index], 
+                                min_contribution = self.min_contribution_all[best_grid_index], 
+                                include_top = self.include_top_all[best_grid_index])
 
         return self
