@@ -140,8 +140,6 @@ def match_catalog_pair(W1, W2, metric='cosine'):
     (See https://en.wikipedia.org/wiki/Assignment_problem).
     2. W2 will be reordered to match with W1.
     """
-    print(W1.shape)
-    print(W2.shape)
     if W1.shape != W2.shape:
         raise ValueError('W1 and W2 must be of the same shape.')
 

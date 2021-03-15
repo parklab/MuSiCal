@@ -177,11 +177,6 @@ def reassign(model):  # maybe we should move this function into denovo.py
     exp_thresh : 1-d numpy array
     """
 
-    print(frac_thresh_base)
-    print(frac_thresh_keep)
-    print(frac_thresh)
-    print(llh_thresh)
-    print(exp_thresh)
     frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh, n_params_sparse = param_search_same_length(frac_thresh_base, frac_thresh_keep, frac_thresh, llh_thresh, exp_thresh)
     thresh_match, thresh_new_sig, min_contribution, include_top, n_params_match = param_search_same_length(thresh_match, thresh_new_sig, min_contribution, include_top)
 
@@ -225,8 +220,6 @@ def reassign(model):  # maybe we should move this function into denovo.py
                 # for each signature in the signature matrix match to the catalog if the cosine similarity
                 # is smaller than the value thresh_new_sig use the denovo signature instead 
                 for w in W.T:
-                    print(w)
-                    print(W_catalog.shape)
                     match_inds, cos, coef = match_signature_to_catalog(w, W_catalog, thresh = thresh_match[j], min_contribution = min_contribution[j], include_top = include_top[j])                    
                     if match_inds == -1:
                         inds_w_model_new_sig.append(ind_w_model)
@@ -248,7 +241,6 @@ def reassign(model):  # maybe we should move this function into denovo.py
                     signames_this = []
 
                 signames_this = np.array(signames_this)
-                print(inds)
                 unique_inds = np.unique(inds).astype(int)
                 if W_s_this is None: 
                     W_s_this = W_catalog[:, unique_inds]
