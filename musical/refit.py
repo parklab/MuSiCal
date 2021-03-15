@@ -225,12 +225,17 @@ def reassign(model):  # maybe we should move this function into denovo.py
                 # for each signature in the signature matrix match to the catalog if the cosine similarity
                 # is smaller than the value thresh_new_sig use the denovo signature instead 
                 for w in W.T:
+                    print(w)
+                    print(W_catalog.shape)
                     match_inds, cos, coef = match_signature_to_catalog(w, W_catalog, thresh = thresh_match[j], min_contribution = min_contribution[j], include_top = include_top[j])                    
-                    match_inds = np.asarray(match_inds)
-                    if cos < thresh_new_sig[j]: 
+                    if match_inds == -1:
                         inds_w_model_new_sig.append(ind_w_model)
                     else:
-                        inds.append(match_inds)
+                        match_inds = np.asarray(match_inds)
+                        if cos < thresh_new_sig[j]: 
+                            inds_w_model_new_sig.append(ind_w_model)
+                        else:
+                            inds = np.append(inds, match_inds)
                     ind_w_model = ind_w_model + 1 
         
 
@@ -242,13 +247,15 @@ def reassign(model):  # maybe we should move this function into denovo.py
                     W_s_this = []
                     signames_this = []
 
-                unique_inds = np.unique(inds, axis=0).flatten()
+                signames_this = np.array(signames_this)
+                print(inds)
+                unique_inds = np.unique(inds).astype(int)
                 if W_s_this is None: 
                     W_s_this = W_catalog[:, unique_inds]
                     signames_this = signatures[unique_inds]
                 elif(unique_inds.size > 0):
                     W_s_this = np.concatenate((W_s_this, W_catalog[:, unique_inds]), axis = 1)
-                    signames_this.append(signatures[unique_inds])
+                    signames_this = np.append(signames_this, signatures[unique_inds])
 
 
                 H_s_this, reco_error = refit_matrix(X, W_s_this, 

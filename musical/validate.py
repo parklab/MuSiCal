@@ -27,8 +27,6 @@ def validate(model,
     else:
        save_models = False
 
-    print('use_refit')
-    print(use_refit)
     dist_W_all = {}
     dists_per_sig_all = {}
     W_simul_all = {}
@@ -47,7 +45,7 @@ def validate(model,
             X_simul_this = simulate_count_matrix(W_s_this, H_s_this)
             model_simul = model.clone_model(X_simul_this, grid_index = i)
             if use_refit:
-                model_simul.W = model.W
+                model_simul.W = model.W_s_all[i]
                 model_simul.run_reassign()
                 H_simul_reordered, reordered_indices, pdist = match_catalog_pair(model.H_s_all[i].T, model_simul.H_s.T, metric = metric_dist)
                 error_W_all.append(beta_divergence(model.W_s_all[i], model_simul.W_s, beta=1))
@@ -96,12 +94,13 @@ def validate(model,
                 pickle.dump(list_models_simul, f, pickle.HIGHEST_PROTOCOL)
 
     else:  # if there was no grid search
+        best_grid_index = None
         W_s = model.W_s
         H_s = model.H_s
         X_simul = simulate_count_matrix(W_s, H_s)
         model_simul = model.clone_model(X_simul, grid_index = 1) 
         if use_refit:
-            model_simul.W = model.W
+            model_simul.W = model.W_s
             model_simul.run_reassign()
             H_simul_reordered, reordered_indices, pdist = match_catalog_pair(model.H_s.T, model_simul.H_s.T, metric = metric_dist)
             error_W = beta_divergence(model.W_s, model_simul.W_s, beta=1)
@@ -119,9 +118,8 @@ def validate(model,
             H_simul = model_simul.H
 
         dists_per_sig_this = np.diagonal(pdist)
-        inds_max = np.where(np.max(dists_per_sig) == dists_per_sig)
-        dist_max = np.max(dists_per_sig)
+        inds_max = np.where(np.max(dists_per_sig_this) == dists_per_sig_this)
+        dist_max = np.max(dists_per_sig_this)
         dist_max_sig_index = inds_max
         dist_W = pdist
-
-    return W_simul, H_simul, X_simul, best_grid_index, error_W, error_H, dist_W, dist_max, dist_max_sig_index, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
+    return W_simul, H_simul, X_simul, best_grid_index, error_W, error_H, dist_W, dist_max, dist_max_sig_index,  dist_max_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all

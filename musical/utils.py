@@ -140,6 +140,8 @@ def match_catalog_pair(W1, W2, metric='cosine'):
     (See https://en.wikipedia.org/wiki/Assignment_problem).
     2. W2 will be reordered to match with W1.
     """
+    print(W1.shape)
+    print(W2.shape)
     if W1.shape != W2.shape:
         raise ValueError('W1 and W2 must be of the same shape.')
 
@@ -264,12 +266,13 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
             continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
-    match = data[0][0]
-    coef = data[0][1]
-    cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
-    # If cosine similarity >= thresh, return the best doublet
-    if cos >= thresh:
-        return match, cos, coef
+    if len(data) > 0:
+        match = data[0][0]
+        coef = data[0][1]
+        cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
+        # If cosine similarity >= thresh, return the best doublet
+        if cos >= thresh:
+            return match, cos, coef
 
     ###################################################
     ##################### Triplets ####################
@@ -288,10 +291,19 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
             continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
-    match = data[0][0]
-    coef = data[0][1]
-    cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
-    return match, cos, coef
+    if len(data) > 0:
+        match = data[0][0]
+        coef = data[0][1]
+        cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
+        return match, cos, coef    
+    return -1,-1,-1
 
-def save_signature_exposure_tables(model):
-    model.W
+def tag_similar_signatures(W, metric = 'cosine'):
+    pdist = pairwise_distances(W.T, metric = metric)
+    n_signatures = W.shape[1]
+    similar_signatures = []    
+    for i in  range(0, n_signatures):
+        inds = np.where(pdist[i, :] < 0.05)
+        similar_signatures[i] = inds
+    return similar_signatures
+
