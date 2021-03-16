@@ -106,7 +106,7 @@ class DenovoSig:
                  mvnmf_lambda_tilde_grid=None,
                  mvnmf_delta=1.0,
                  mvnmf_gamma=1.0,
-                 mvnmf_pthresh=0.05, 
+                 mvnmf_pthresh=0.05,
                  use_catalog=True,
                  catalog_name='COSMIC_v3p1_SBS_WGS',
                  thresh_match = [0.99],
@@ -207,7 +207,8 @@ class DenovoSig:
                                      lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
                                      pthresh=self.mvnmf_pthresh,
                                      delta=self.mvnmf_delta,
-                                     gamma=self.mvnmf_gamma
+                                     gamma=self.mvnmf_gamma,
+                                     ncpu=1
                                     )
                 model.fit(eng=eng)
                 if self.verbose:
@@ -261,6 +262,9 @@ class DenovoSig:
         # 1. Run NMFs
         # 2. Gather results within the same n_components
         # 3. Select n_components
+        self.W_raw_all = {} # Save all raw results
+        self.H_raw_all = {} # Save all raw results
+        self.lambda_tilde_all = {} # Save lambda_tilde's used for each mvNMF run
         self.W_all = {}
         self.H_all = {}
         self.sil_score_all = {}
@@ -306,7 +310,8 @@ class DenovoSig:
                                          lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
                                          pthresh=self.mvnmf_pthresh,
                                          delta=self.mvnmf_delta,
-                                         gamma=self.mvnmf_gamma
+                                         gamma=self.mvnmf_gamma,
+                                         ncpu=self.ncpu
                                         )
                     model.fit(eng=eng)
                     models = [model]
@@ -331,6 +336,18 @@ class DenovoSig:
             ##############################################
             ####### Gather results from all models #######
             ##############################################
+            self.W_raw_all[n_components] = [model.W for model in models] # Save all raw results
+            self.H_raw_all[n_components] = [model.H for model in models] # Save all raw results
+            # Save lambda_tilde's used for each mvNMF run
+            if self.method == 'nmf':
+                self.lambda_tilde_all[n_components] = None
+            elif self.method == 'mvnmf':
+                if self.mvnmf_hyperparameter_method == 'all':
+                    self.lambda_tilde_all[n_components] = [model.lambda_tilde for model in models]
+                elif self.mvnmf_hyperparameter_method == 'single':
+                    self.lambda_tilde_all[n_components] = [lambda_tilde]*self.n_replicates
+                elif self.mvnmf_hyperparameter_method == 'fixed':
+                    self.lambda_tilde_all[n_components] = [self.mvnmf_lambda_tilde_grid]*self.n_replicates
             W, H, sil_score, sil_score_mean = _gather_results(self.X, [model.W for model in models])
             self.W_all[n_components] = W
             self.H_all[n_components] = H
@@ -406,18 +423,18 @@ class DenovoSig:
 
         return self
 
-    def set_params(self, 
+    def set_params(self,
                    use_catalog = None,
                    catalog_name = None,
                    thresh_match = None,
                    thresh_new_sig = None,
                    min_contribution = None,
                    include_top = None,
-                   method_sparse = None, 
+                   method_sparse = None,
                    frac_thresh_base = None,
                    frac_thresh_keep = None,
                    frac_thresh = None,
-                   llh_thresh = None, 
+                   llh_thresh = None,
                    exp_thresh = None):
 
         if use_catalog != None:
@@ -486,7 +503,7 @@ class DenovoSig:
                                   frac_thresh = [self.frac_thresh],
                                   llh_thresh = [self.llh_thresh],
                                   exp_thresh = [self.exp_thresh])
- 
+
         if self.use_catalog:
             if self.n_grid > 1:
                 model_new.set_params(thresh_match = [self.thresh_match_all],
@@ -502,13 +519,13 @@ class DenovoSig:
 
 
     def clear_grid(self):
-        if hasattr(self, 'frac_thresh_base_all'):            
+        if hasattr(self, 'frac_thresh_base_all'):
             self.frac_thresh_base_all = None
-        if hasattr(self, 'frac_thresh_keep_all'):            
+        if hasattr(self, 'frac_thresh_keep_all'):
             self.frac_thresh_keep_all = None
-        if hasattr(self, 'llh_thresh_all'):            
+        if hasattr(self, 'llh_thresh_all'):
             self.llh_thresh_all = None
-        if hasattr(self, 'exp_thresh_all'):                       
+        if hasattr(self, 'exp_thresh_all'):
             self.exp_thresh_all = None
         if hasattr(self, 'reconstruction_error_s_all'):
             self.reconstruction_error_s_all = None
@@ -526,31 +543,31 @@ class DenovoSig:
         W_s, H_s, signames, reconstruction_error_s_all, n_grid, frac_thresh_base_all, frac_thresh_keep_all, frac_thresh_all, llh_thresh_all, exp_thresh_all, thresh_match_all, thresh_new_sig_all, min_contribution_all, include_top_all = reassign(self)
 
 
-        # User might want to keep the same model and do a second reassignment 
+        # User might want to keep the same model and do a second reassignment
         # Because if the size of parameters is 1 attributes that do not end
         # all are saved this can result in having results from two different
         # reassignment calls
 
 
-        if clear:  
-            if hasattr(self, 'W_s'):            
+        if clear:
+            if hasattr(self, 'W_s'):
                 self.W_s = None
-            if hasattr(self, 'H_s'):            
+            if hasattr(self, 'H_s'):
                 self.H_s = None
-            if hasattr(self, 'signature_names'):            
+            if hasattr(self, 'signature_names'):
                 self.signature_names = None
             if hasattr(self, 'reconstruction_error_s'):
                 self.reconstruction_error_s = None
-            if hasattr(self, 'W_s_all'):            
+            if hasattr(self, 'W_s_all'):
                 self.W_s_all = None
-            if hasattr(self, 'H_s_all'):            
+            if hasattr(self, 'H_s_all'):
                 self.H_s_all = None
-            if hasattr(self, 'signature_names_all'):            
+            if hasattr(self, 'signature_names_all'):
                 self.signature_names_all = None
             self.clear_grid()
-         
+
         self.n_grid = n_grid
- 
+
         if n_grid == 1:
             self.W_s = W_s[0]
             self.H_s = H_s[0]
@@ -560,7 +577,7 @@ class DenovoSig:
             self.W_s_all = W_s
             self.H_s_all = H_s
             self.signature_names_all = signames
-            self.frac_thresh_base_all = frac_thresh_base_all 
+            self.frac_thresh_base_all = frac_thresh_base_all
             self.frac_thresh_all = frac_thresh_all
             self.frac_thresh_keep_all = frac_thresh_keep_all
             self.llh_thresh_all = llh_thresh_all
@@ -579,7 +596,7 @@ class DenovoSig:
     def validate_assignment(self, validation_output_file = None, use_refit = False, clear_grid = False):
         W_simul, H_simul, X_simul, best_grid_index, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self, validation_output_file = validation_output_file, use_refit = use_refit)
         self.W_simul = W_simul
-        self.H_simul = H_simul 
+        self.H_simul = H_simul
         self.X_simul = X_simul
         self.best_grid_index = best_grid_index
         self.error_W_simul = error_W
@@ -589,22 +606,22 @@ class DenovoSig:
         self.dist_max_simul_sig_index = dist_max_sig_index
         self.dist_max_simul_all = dist_max_all
         self.dist_max_simul_sig_index_all = dist_max_sig_index_all
- 
+
         if self.n_grid > 1:
             self.W_s = self.W_s_all[best_grid_index]
             self.H_s = self.H_s_all[best_grid_index]
             self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index]
-            self.set_params(frac_thresh_base = [self.frac_thresh_base_all[best_grid_index]], 
+            self.set_params(frac_thresh_base = [self.frac_thresh_base_all[best_grid_index]],
                             frac_thresh_keep = [self.frac_thresh_keep_all[best_grid_index]],
-                            frac_thresh = [self.frac_thresh_all[best_grid_index]], 
-                            llh_thresh = [self.llh_thresh_all[best_grid_index]], 
+                            frac_thresh = [self.frac_thresh_all[best_grid_index]],
+                            llh_thresh = [self.llh_thresh_all[best_grid_index]],
                             exp_thresh = [self.exp_thresh_all[best_grid_index]])
             if self.use_catalog:
-                self.set_params(thresh_match = [self.thresh_match_all[best_grid_index]], 
-                                thresh_new_sig = [self.thresh_new_sig_all[best_grid_index]], 
-                                min_contribution = [self.min_contribution_all[best_grid_index]], 
+                self.set_params(thresh_match = [self.thresh_match_all[best_grid_index]],
+                                thresh_new_sig = [self.thresh_new_sig_all[best_grid_index]],
+                                min_contribution = [self.min_contribution_all[best_grid_index]],
                                 include_top = [self.include_top_all[best_grid_index]])
-       
+
         if clear_grid:
             self.clear_grid()
         return self

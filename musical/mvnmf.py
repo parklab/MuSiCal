@@ -4,13 +4,15 @@ TODO
 ----------
 1. Parallelize wrappedMVNMF. The problem is that, DenovoSig already parallelizes
     multiple runs of wrappedMVNMF. If inside wrappedMVNMF there is also parallelization,
-    then there will be problems. I'm not sure if there is a workaround. 
+    then there will be problems. I'm not sure if there is a workaround.
 """
 
 import numpy as np
 from sklearn.preprocessing import normalize
 import scipy.stats as stats
 import warnings
+import multiprocessing
+import os
 
 from .utils import beta_divergence, normalize_WH, _samplewise_error
 from .initialization import initialize_nmf
@@ -372,6 +374,7 @@ class wrappedMVNMF:
                  tol=1e-4,
                  conv_test_freq=10,
                  conv_test_baseline=None,
+                 ncpu=1,
                  verbose=0#,
                  #eng=None
                  ):
@@ -401,8 +404,23 @@ class wrappedMVNMF:
         self.tol = tol
         self.conv_test_freq = conv_test_freq
         self.conv_test_baseline = conv_test_baseline
+        if ncpu is None:
+            ncpu = os.cpu_count()
+        self.ncpu = ncpu
         self.verbose = verbose
         #self.eng = eng
+
+    def _job(self, lambda_tilde):
+        model = MVNMF(self.X, self.n_components, init='custom',
+                      init_W_custom=self.W_init, init_H_custom=self.H_init,
+                      lambda_tilde=lambda_tilde, delta=self.delta, gamma=self.gamma,
+                      max_iter=self.max_iter, min_iter=self.min_iter, tol=self.tol,
+                      conv_test_freq=self.conv_test_freq, conv_test_baseline=self.conv_test_baseline,
+                      verbose=0)
+        model.fit()
+        if self.verbose:
+            print('mvNMF with lambda_tilde = %.5g finished.' % lambda_tilde)
+        return model
 
     def fit(self, eng=None):
         ##################################################
@@ -419,20 +437,27 @@ class wrappedMVNMF:
         ##################################################
         ################### Run mvNMF ####################
         ##################################################
-        # Need to parallelize this part.
-        models = []
-        for lambda_tilde in self.lambda_tilde_grid:
-            if self.verbose:
-                print('==============================================')
-                print('Running mvNMF with lambda_tilde = %.5g......' % lambda_tilde)
-            model = MVNMF(self.X, self.n_components, init='custom',
-                          init_W_custom=self.W_init, init_H_custom=self.H_init,
-                          lambda_tilde=lambda_tilde, delta=self.delta, gamma=self.gamma,
-                          max_iter=self.max_iter, min_iter=self.min_iter, tol=self.tol,
-                          conv_test_freq=self.conv_test_freq, conv_test_baseline=self.conv_test_baseline,
-                          verbose=self.verbose)
-            model.fit(eng=eng)
-            models.append(model)
+        if self.ncpu == 1:
+            # We separate out ncpu == 1 case, such that in DenovoSig, we do not run into issues
+            # when we create workers both outside and inside of wrappedMVNMF. 
+            models = []
+            for lambda_tilde in self.lambda_tilde_grid:
+                if self.verbose:
+                    print('==============================================')
+                    print('Running mvNMF with lambda_tilde = %.5g......' % lambda_tilde)
+                model = MVNMF(self.X, self.n_components, init='custom',
+                              init_W_custom=self.W_init, init_H_custom=self.H_init,
+                              lambda_tilde=lambda_tilde, delta=self.delta, gamma=self.gamma,
+                              max_iter=self.max_iter, min_iter=self.min_iter, tol=self.tol,
+                              conv_test_freq=self.conv_test_freq, conv_test_baseline=self.conv_test_baseline,
+                              verbose=self.verbose)
+                model.fit(eng=eng)
+                models.append(model)
+        else:
+            workers = multiprocessing.Pool(self.ncpu)
+            models = workers.map(self._job, list(self.lambda_tilde_grid))
+            workers.close()
+            workers.join()
         self.Lambda_grid = np.array([model.Lambda for model in models])
         self.loss_grid = np.array([model.loss for model in models])
         self.reconstruction_error_grid = np.array([model.reconstruction_error for model in models])
