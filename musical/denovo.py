@@ -118,7 +118,8 @@ class DenovoSig:
                  frac_thresh_keep = [0.4],
                  frac_thresh = [0.05],
                  llh_thresh = [0.65],
-                 exp_thresh = [8.]
+                 exp_thresh = [8.],
+                 features = features
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -164,6 +165,7 @@ class DenovoSig:
         self.frac_thresh = frac_thresh
         self.llh_thresh = llh_thresh
         self.exp_thresh = exp_thresh
+        self.features = features
 
     def _job(self, parameters):
         """parameters = (index_replicate, n_components, eng, lambda_tilde)
@@ -490,7 +492,8 @@ class DenovoSig:
                               mvnmf_pthresh = self.mvnmf_pthresh,
                               use_catalog = self.use_catalog,
                               catalog_name = self.catalog_name,
-                              method_sparse = self.method_sparse)
+                              method_sparse = self.method_sparse,
+                              features = self.features)
         if self.n_grid > 1:
             model_new.set_params(frac_thresh_base = [self.frac_thresh_base_all[grid_index]],
                                   frac_thresh_keep = [self.frac_thresh_keep_all[grid_index]],

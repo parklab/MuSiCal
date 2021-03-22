@@ -184,6 +184,9 @@ def reassign(model):  # maybe we should move this function into denovo.py
     W_catalog = np.array(catalog.W)
     signatures = np.array(catalog.signatures)
 
+    W_catalog = W_catalog[:,[index for index,item in enumerate(signatures) if item != "SBS40"]]
+    signatures = signatures[[index for index,item in enumerate(signatures) if item != "SBS40"]]
+
     W = model.W
 
     X = model.X
@@ -207,7 +210,12 @@ def reassign(model):  # maybe we should move this function into denovo.py
     thresh_new_sig_all = []
     min_contribution_all = []
     include_top_all = []
-     
+
+    if model.features is not None:
+        inds = []
+        for item in model.features:
+            inds.append(catalog.features.index(item))
+        W_catalog = W_catalog[inds, :]    
 
     for i in np.arange(0, n_params_sparse): # loop over parameters used in nnls_spars
         if use_catalog:
@@ -230,25 +238,22 @@ def reassign(model):  # maybe we should move this function into denovo.py
                         else:
                             inds = np.append(inds, match_inds)
                     ind_w_model = ind_w_model + 1 
-        
+
+
+                unique_inds = np.unique(inds).astype(int)        
 
                 inds_w_model_new_sig = np.array(inds_w_model_new_sig)
                 if(len(inds_w_model_new_sig) > 0):
                     W_s_this = W[:, inds_w_model_new_sig]
                     signames_this = ["Sig_N" + str(i) for i in range(0, inds_w_model_new_sig.size)]
+                    signames_this = np.array(signames_this)
+                    if(unique_inds.size > 0):
+                        W_s_this = np.concatenate(W_s_this, W_catalog[:, unique_inds], axis = 1)
+                        signames_this = np.append(signames_this, signatures[unique_inds])
                 else:
-                    W_s_this = []
-                    signames_this = []
-
-                signames_this = np.array(signames_this)
-                unique_inds = np.unique(inds).astype(int)
-                if W_s_this is None: 
                     W_s_this = W_catalog[:, unique_inds]
                     signames_this = signatures[unique_inds]
-                elif(unique_inds.size > 0):
-                    W_s_this = np.concatenate((W_s_this, W_catalog[:, unique_inds]), axis = 1)
-                    signames_this = np.append(signames_this, signatures[unique_inds])
-
+                    signames_this = np.array(signames_this)
 
                 H_s_this, reco_error = refit_matrix(X, W_s_this, 
                                                     method = method_sparse,

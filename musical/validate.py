@@ -63,6 +63,10 @@ def validate(model,
 
             # pdist is the distance between the signatures if use_refit = False
             # otherwise it is the distance between the exposures
+            if use_refit:
+                _,_,pdist = match_catalog_pair(model.H_s.T, model_simul.H_s.T, metric = metric_dist)
+            else: 
+                _,_,pdist = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
             dists_per_sig_this = np.diagonal(pdist)
             inds_max = np.where(np.max(dists_per_sig_this) == dists_per_sig_this)
             dist_max_all.append(np.max(dists_per_sig_this))
@@ -117,6 +121,10 @@ def validate(model,
             W_simul = model_simul.W
             H_simul = model_simul.H
 
+        if use_refit:
+            _,_,pdist = match_catalog_pair(model.H_s.T, model_simul.H_s.T, metric = metric_dist)
+        else: 
+             _,_,pdist = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
         dists_per_sig_this = np.diagonal(pdist)
         inds_max = np.where(np.max(dists_per_sig_this) == dists_per_sig_this)
         dist_max = np.max(dists_per_sig_this)

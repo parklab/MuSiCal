@@ -305,3 +305,5 @@ def tag_similar_signatures(W, metric = 'cosine'):
         similar_signatures[i] = inds
     return similar_signatures
 
+def save_signature_exposure_tables(model):
+    model.W
