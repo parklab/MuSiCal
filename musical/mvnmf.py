@@ -411,6 +411,9 @@ class wrappedMVNMF:
         #self.eng = eng
 
     def _job(self, lambda_tilde):
+        np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
+        # For this _job(), the line above is not necessary, since there isn't any randomness in the codes below.
+        # However, I think it is generally a good practice to add the seeding line in any parallel job.
         model = MVNMF(self.X, self.n_components, init='custom',
                       init_W_custom=self.W_init, init_H_custom=self.H_init,
                       lambda_tilde=lambda_tilde, delta=self.delta, gamma=self.gamma,
@@ -439,7 +442,7 @@ class wrappedMVNMF:
         ##################################################
         if self.ncpu == 1:
             # We separate out ncpu == 1 case, such that in DenovoSig, we do not run into issues
-            # when we create workers both outside and inside of wrappedMVNMF. 
+            # when we create workers both outside and inside of wrappedMVNMF.
             models = []
             for lambda_tilde in self.lambda_tilde_grid:
                 if self.verbose:

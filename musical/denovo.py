@@ -174,6 +174,7 @@ class DenovoSig:
         'cannot pickle' errors.
         """
         index_replicate, n_components, eng, lambda_tilde = parameters
+        np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
         if self.method == 'nmf':
             if self.bootstrap:
                 X_in = bootstrap_count_matrix(self.X)
@@ -338,6 +339,7 @@ class DenovoSig:
             ##############################################
             ####### Gather results from all models #######
             ##############################################
+            #self.models = models
             self.W_raw_all[n_components] = [model.W for model in models] # Save all raw results
             self.H_raw_all[n_components] = [model.H for model in models] # Save all raw results
             # Save lambda_tilde's used for each mvNMF run
