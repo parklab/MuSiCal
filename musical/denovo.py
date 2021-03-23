@@ -119,7 +119,7 @@ class DenovoSig:
                  frac_thresh = [0.05],
                  llh_thresh = [0.65],
                  exp_thresh = [8.],
-                 features = features
+                 features = None
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
