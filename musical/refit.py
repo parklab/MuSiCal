@@ -122,7 +122,46 @@ def param_search_same_length(v1, v2, v3, v4, v5 = None):
         return v1, v2, v3, v4, n_params
     else:
         return v1, v2, v3, v4, v5, n_params
-                 
+
+  
+
+def get_decomposed_W(W, W_catalog, signatures, thresh_match, thresh_new_sig, min_contribution, include_top):
+    inds = [] # indices of the catalog to which W model matches to
+    inds_w_model_new_sig = [] # indices of W from the model that are not matched to the catalog
+    ind_w_model = 0
+
+    # for each signature in the signature matrix match to the catalog if the cosine similarity
+    # is smaller than the value thresh_new_sig use the denovo signature instead 
+    for w in W.T:
+        match_inds, cos, coef = match_signature_to_catalog(w, W_catalog, thresh = thresh_match, min_contribution = min_contribution, include_top = include_top)                    
+        if match_inds == -1:
+            inds_w_model_new_sig.append(ind_w_model)
+        else:
+            match_inds = np.asarray(match_inds)
+            if cos < thresh_new_sig: 
+                inds_w_model_new_sig.append(ind_w_model)
+            else:
+                inds = np.append(inds, match_inds)
+        ind_w_model = ind_w_model + 1 
+
+
+    unique_inds = np.unique(inds).astype(int)        
+
+    inds_w_model_new_sig = np.array(inds_w_model_new_sig)
+    if(len(inds_w_model_new_sig) > 0):
+        W_s = W[:, inds_w_model_new_sig]
+        signames = ["Sig_N" + str(i) for i in range(0, inds_w_model_new_sig.size)]
+        signames = np.array(signames)
+        if(unique_inds.size > 0):
+            W_s = np.concatenate((W_s, W_catalog[:, unique_inds]), axis = 1)
+            signames = np.append(signames, signatures[unique_inds])
+    else:
+        W_s = W_catalog[:, unique_inds]
+        signames = signatures[unique_inds]
+        signames = np.array(signames)
+
+    return W_s, signames
+             
 def reassign(model):  # maybe we should move this function into denovo.py
 
     # We need to write here an if to give error if parameters are not set
@@ -217,43 +256,11 @@ def reassign(model):  # maybe we should move this function into denovo.py
             inds.append(catalog.features.index(item))
         W_catalog = W_catalog[inds, :]    
 
-    for i in np.arange(0, n_params_sparse): # loop over parameters used in nnls_spars
+    for i in np.arange(0, n_params_sparse): # loop over parameters used in nnls_sparse
         if use_catalog:
             for j in np.arange(0, n_params_match): # loop over parameters used in catalog match
-                inds = [] # indices of the catalog to which W model matches to
+                W_s_this, signames_this = get_decomposed_W(W, W_catalog, signatures, thresh_match[j], thresh_new_sig[j], min_contribution[j], include_top[j])
 
-                inds_w_model_new_sig = [] # indices of W from the model that are not matched to the catalog
-                ind_w_model = 0
-
-                # for each signature in the signature matrix match to the catalog if the cosine similarity
-                # is smaller than the value thresh_new_sig use the denovo signature instead 
-                for w in W.T:
-                    match_inds, cos, coef = match_signature_to_catalog(w, W_catalog, thresh = thresh_match[j], min_contribution = min_contribution[j], include_top = include_top[j])                    
-                    if match_inds == -1:
-                        inds_w_model_new_sig.append(ind_w_model)
-                    else:
-                        match_inds = np.asarray(match_inds)
-                        if cos < thresh_new_sig[j]: 
-                            inds_w_model_new_sig.append(ind_w_model)
-                        else:
-                            inds = np.append(inds, match_inds)
-                    ind_w_model = ind_w_model + 1 
-
-
-                unique_inds = np.unique(inds).astype(int)        
-
-                inds_w_model_new_sig = np.array(inds_w_model_new_sig)
-                if(len(inds_w_model_new_sig) > 0):
-                    W_s_this = W[:, inds_w_model_new_sig]
-                    signames_this = ["Sig_N" + str(i) for i in range(0, inds_w_model_new_sig.size)]
-                    signames_this = np.array(signames_this)
-                    if(unique_inds.size > 0):
-                        W_s_this = np.concatenate(W_s_this, W_catalog[:, unique_inds], axis = 1)
-                        signames_this = np.append(signames_this, signatures[unique_inds])
-                else:
-                    W_s_this = W_catalog[:, unique_inds]
-                    signames_this = signatures[unique_inds]
-                    signames_this = np.array(signames_this)
 
                 H_s_this, reco_error = refit_matrix(X, W_s_this, 
                                                     method = method_sparse,
