@@ -18,7 +18,7 @@ from .nnls import nnls
 from .refit import reassign
 from .validate import validate
 
-def _gather_results(X, Ws, method='hierarchical'):
+def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=10):
     """Gather NMF or mvNMF results
 
     TODO
@@ -38,6 +38,13 @@ def _gather_results(X, Ws, method='hierarchical'):
         sil_score_mean = 1.0
         return W, H, sil_score, sil_score_mean
     ### If more than one solutions:
+    # Filtering
+    if filter:
+        if Hs is None:
+            raise ValueError('If filtering is to be performed, Hs must be supplied.')
+        errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
+        retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) < thresh*stats.median_abs_deviation(errors)]
+        Ws = [Ws[i] for i in retained_indices]
     ### If there is only 1 signature:
     if n_components == 1:
         W = np.mean(Ws, 0)
@@ -352,7 +359,9 @@ class DenovoSig:
                     self.lambda_tilde_all[n_components] = [lambda_tilde]*self.n_replicates
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     self.lambda_tilde_all[n_components] = [self.mvnmf_lambda_tilde_grid]*self.n_replicates
-            W, H, sil_score, sil_score_mean = _gather_results(self.X, [model.W for model in models])
+            W, H, sil_score, sil_score_mean = _gather_results(
+                self.X, [model.W for model in models], Hs=[model.H for model in models], filter=True
+            )
             self.W_all[n_components] = W
             self.H_all[n_components] = H
             self.sil_score_all[n_components] = sil_score
