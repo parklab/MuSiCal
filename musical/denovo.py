@@ -384,6 +384,7 @@ class DenovoSig:
             warnings.warn('Only 1 n_components value is tested.',
                           UserWarning)
             self.n_components = self.n_components_all[0]
+            self.n_components_old = self.n_components
             if np.mean(self.sil_score_all[self.n_components]) >= 0.8 and np.min(self.sil_score_all[self.n_components]) >= 0.2:
                 self.min_n_components_stable = self.n_components
                 self.max_n_components_stable = self.n_components
@@ -405,6 +406,7 @@ class DenovoSig:
                 warnings.warn('Only 1 n_components value with stable solutions is found.',
                               UserWarning)
                 self.n_components = candidates[0]
+                self.n_components_old = self.n_components
                 self.min_n_components_stable = self.n_components
                 self.max_n_components_stable = self.n_components
                 self.pvalue_all = None
