@@ -422,10 +422,21 @@ class DenovoSig:
                                        self.samplewise_reconstruction_errors_all[n_components + 1],
                                        alternative='greater')[1] for n_components in self.pvalue_all_n_components[0:-1]
                 ])
+                # Old selection
                 if np.max(self.pvalue_all) <= self.pthresh:
-                    index_selected = len(self.pvalue_all_n_components) - 1
+                    warnings.warn('All p-values are smaller than or equal to pthresh. Enlarge search space for n_components.',
+                                  UserWarning)
+                    index_selected_old = len(self.pvalue_all_n_components) - 1
                 else:
-                    index_selected = np.argmax(self.pvalue_all > self.pthresh)
+                    index_selected_old = np.argmax(self.pvalue_all > self.pthresh)
+                self.n_components_old = self.pvalue_all_n_components[index_selected_old]
+                # New selection
+                if np.min(self.pvalue_all) > self.pthresh:
+                    warnings.warn('All p-values are greater than pthresh. Enlarge search space for n_components.',
+                                  UserWarning)
+                    index_selected = 0
+                else:
+                    index_selected = np.flatnonzero(self.pvalue_all <= self.pthresh)[-1] + 1
                 self.n_components = self.pvalue_all_n_components[index_selected]
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
