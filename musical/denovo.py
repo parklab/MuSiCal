@@ -43,7 +43,7 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
         if Hs is None:
             raise ValueError('If filtering is to be performed, Hs must be supplied.')
         errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
-        retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) < thresh*stats.median_abs_deviation(errors)]
+        retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
         Ws = [Ws[i] for i in retained_indices]
     ### If there is only 1 signature:
     if n_components == 1:
@@ -346,7 +346,6 @@ class DenovoSig:
             ##############################################
             ####### Gather results from all models #######
             ##############################################
-            #self.models = models
             self.W_raw_all[n_components] = [model.W for model in models] # Save all raw results
             self.H_raw_all[n_components] = [model.H for model in models] # Save all raw results
             # Save lambda_tilde's used for each mvNMF run
