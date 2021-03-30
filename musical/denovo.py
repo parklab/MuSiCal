@@ -27,6 +27,16 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
     """
     n_features, n_samples = X.shape
     n_components = Ws[0].shape[1]
+    # Filtering
+    if filter:
+        if len(Ws) == 1:
+            pass
+        else:
+            if Hs is None:
+                raise ValueError('If filtering is to be performed, Hs must be supplied.')
+            errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
+            retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
+            Ws = [Ws[i] for i in retained_indices]
     ### If only one solution:
     if len(Ws) == 1:
         W = Ws[0]
@@ -36,15 +46,8 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
         # This is different from the canonical definition, where it is 0.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean
+        return W, H, sil_score, sil_score_mean, len(Ws)
     ### If more than one solutions:
-    # Filtering
-    if filter:
-        if Hs is None:
-            raise ValueError('If filtering is to be performed, Hs must be supplied.')
-        errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
-        retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
-        Ws = [Ws[i] for i in retained_indices]
     ### If there is only 1 signature:
     if n_components == 1:
         W = np.mean(Ws, 0)
@@ -53,7 +56,7 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
         # When there is only 1 cluster, we also define the sil_score to be 1.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean
+        return W, H, sil_score, sil_score_mean, len(Ws)
     ### If there are more than 1 signatures
     if method == 'hierarchical':
         sigs = np.concatenate(Ws, axis=1)
@@ -76,7 +79,7 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean
+        return W, H, sil_score, sil_score_mean, len(Ws)
     else:
         raise ValueError('Only method = hierarchical is implemented for _gather_results().')
 
@@ -280,6 +283,7 @@ class DenovoSig:
         self.sil_score_all = {}
         self.sil_score_mean_all = {}
         self.reconstruction_error_all = {}
+        self.n_replicates_after_filtering_all = {}
         start = time.time()
         for n_components in self.n_components_all:
             ##################################################
@@ -358,9 +362,10 @@ class DenovoSig:
                     self.lambda_tilde_all[n_components] = [lambda_tilde]*self.n_replicates
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     self.lambda_tilde_all[n_components] = [self.mvnmf_lambda_tilde_grid]*self.n_replicates
-            W, H, sil_score, sil_score_mean = _gather_results(
+            W, H, sil_score, sil_score_mean, n_replicates_after_filtering = _gather_results(
                 self.X, [model.W for model in models], Hs=[model.H for model in models], filter=True
             )
+            self.n_replicates_after_filtering_all[n_components] = n_replicates_after_filtering
             self.W_all[n_components] = W
             self.H_all[n_components] = H
             self.sil_score_all[n_components] = sil_score
