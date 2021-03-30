@@ -15,9 +15,10 @@ from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
 from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error
 from .nnls import nnls
+from .refit import reassign
+from .validate import validate
 
-
-def _gather_results(X, Ws, method='hierarchical'):
+def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=10):
     """Gather NMF or mvNMF results
 
     TODO
@@ -26,6 +27,16 @@ def _gather_results(X, Ws, method='hierarchical'):
     """
     n_features, n_samples = X.shape
     n_components = Ws[0].shape[1]
+    # Filtering
+    if filter:
+        if len(Ws) == 1:
+            pass
+        else:
+            if Hs is None:
+                raise ValueError('If filtering is to be performed, Hs must be supplied.')
+            errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
+            retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
+            Ws = [Ws[i] for i in retained_indices]
     ### If only one solution:
     if len(Ws) == 1:
         W = Ws[0]
@@ -35,7 +46,7 @@ def _gather_results(X, Ws, method='hierarchical'):
         # This is different from the canonical definition, where it is 0.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean
+        return W, H, sil_score, sil_score_mean, len(Ws)
     ### If more than one solutions:
     ### If there is only 1 signature:
     if n_components == 1:
@@ -45,7 +56,7 @@ def _gather_results(X, Ws, method='hierarchical'):
         # When there is only 1 cluster, we also define the sil_score to be 1.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean
+        return W, H, sil_score, sil_score_mean, len(Ws)
     ### If there are more than 1 signatures
     if method == 'hierarchical':
         sigs = np.concatenate(Ws, axis=1)
@@ -68,7 +79,7 @@ def _gather_results(X, Ws, method='hierarchical'):
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean
+        return W, H, sil_score, sil_score_mean, len(Ws)
     else:
         raise ValueError('Only method = hierarchical is implemented for _gather_results().')
 
@@ -105,7 +116,20 @@ class DenovoSig:
                  mvnmf_lambda_tilde_grid=None,
                  mvnmf_delta=1.0,
                  mvnmf_gamma=1.0,
-                 mvnmf_pthresh=0.05
+                 mvnmf_pthresh=0.05,
+                 use_catalog=True,
+                 catalog_name='COSMIC_v3p1_SBS_WGS',
+                 thresh_match = [0.99],
+                 thresh_new_sig = [0.84],
+                 min_contribution = [0.1],
+                 include_top = [False],
+                 method_sparse = 'llh',
+                 frac_thresh_base = [0.02],
+                 frac_thresh_keep = [0.4],
+                 frac_thresh = [0.05],
+                 llh_thresh = [0.65],
+                 exp_thresh = [8.],
+                 features = None
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -139,6 +163,19 @@ class DenovoSig:
         self.mvnmf_delta = mvnmf_delta
         self.mvnmf_gamma = mvnmf_gamma
         self.mvnmf_pthresh = mvnmf_pthresh
+        self.use_catalog = use_catalog
+        self.catalog_name = catalog_name
+        self.thresh_match = thresh_match
+        self.thresh_new_sig = thresh_new_sig
+        self.min_contribution = min_contribution
+        self.include_top = include_top
+        self.method_sparse = method_sparse
+        self.frac_thresh_base = frac_thresh_base
+        self.frac_thresh_keep = frac_thresh_keep
+        self.frac_thresh = frac_thresh
+        self.llh_thresh = llh_thresh
+        self.exp_thresh = exp_thresh
+        self.features = features
 
     def _job(self, parameters):
         """parameters = (index_replicate, n_components, eng, lambda_tilde)
@@ -147,6 +184,7 @@ class DenovoSig:
         'cannot pickle' errors.
         """
         index_replicate, n_components, eng, lambda_tilde = parameters
+        np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
         if self.method == 'nmf':
             if self.bootstrap:
                 X_in = bootstrap_count_matrix(self.X)
@@ -182,7 +220,8 @@ class DenovoSig:
                                      lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
                                      pthresh=self.mvnmf_pthresh,
                                      delta=self.mvnmf_delta,
-                                     gamma=self.mvnmf_gamma
+                                     gamma=self.mvnmf_gamma,
+                                     ncpu=1
                                     )
                 model.fit(eng=eng)
                 if self.verbose:
@@ -236,11 +275,15 @@ class DenovoSig:
         # 1. Run NMFs
         # 2. Gather results within the same n_components
         # 3. Select n_components
+        self.W_raw_all = {} # Save all raw results
+        self.H_raw_all = {} # Save all raw results
+        self.lambda_tilde_all = {} # Save lambda_tilde's used for each mvNMF run
         self.W_all = {}
         self.H_all = {}
         self.sil_score_all = {}
         self.sil_score_mean_all = {}
         self.reconstruction_error_all = {}
+        self.n_replicates_after_filtering_all = {}
         start = time.time()
         for n_components in self.n_components_all:
             ##################################################
@@ -281,7 +324,8 @@ class DenovoSig:
                                          lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
                                          pthresh=self.mvnmf_pthresh,
                                          delta=self.mvnmf_delta,
-                                         gamma=self.mvnmf_gamma
+                                         gamma=self.mvnmf_gamma,
+                                         ncpu=self.ncpu
                                         )
                     model.fit(eng=eng)
                     models = [model]
@@ -306,7 +350,22 @@ class DenovoSig:
             ##############################################
             ####### Gather results from all models #######
             ##############################################
-            W, H, sil_score, sil_score_mean = _gather_results(self.X, [model.W for model in models])
+            self.W_raw_all[n_components] = [model.W for model in models] # Save all raw results
+            self.H_raw_all[n_components] = [model.H for model in models] # Save all raw results
+            # Save lambda_tilde's used for each mvNMF run
+            if self.method == 'nmf':
+                self.lambda_tilde_all[n_components] = None
+            elif self.method == 'mvnmf':
+                if self.mvnmf_hyperparameter_method == 'all':
+                    self.lambda_tilde_all[n_components] = [model.lambda_tilde for model in models]
+                elif self.mvnmf_hyperparameter_method == 'single':
+                    self.lambda_tilde_all[n_components] = [lambda_tilde]*self.n_replicates
+                elif self.mvnmf_hyperparameter_method == 'fixed':
+                    self.lambda_tilde_all[n_components] = [self.mvnmf_lambda_tilde_grid]*self.n_replicates
+            W, H, sil_score, sil_score_mean, n_replicates_after_filtering = _gather_results(
+                self.X, [model.W for model in models], Hs=[model.H for model in models], filter=True
+            )
+            self.n_replicates_after_filtering_all[n_components] = n_replicates_after_filtering
             self.W_all[n_components] = W
             self.H_all[n_components] = H
             self.sil_score_all[n_components] = sil_score
@@ -325,6 +384,7 @@ class DenovoSig:
             warnings.warn('Only 1 n_components value is tested.',
                           UserWarning)
             self.n_components = self.n_components_all[0]
+            self.n_components_old = self.n_components
             if np.mean(self.sil_score_all[self.n_components]) >= 0.8 and np.min(self.sil_score_all[self.n_components]) >= 0.2:
                 self.min_n_components_stable = self.n_components
                 self.max_n_components_stable = self.n_components
@@ -346,6 +406,7 @@ class DenovoSig:
                 warnings.warn('Only 1 n_components value with stable solutions is found.',
                               UserWarning)
                 self.n_components = candidates[0]
+                self.n_components_old = self.n_components
                 self.min_n_components_stable = self.n_components
                 self.max_n_components_stable = self.n_components
                 self.pvalue_all = None
@@ -367,10 +428,21 @@ class DenovoSig:
                                        self.samplewise_reconstruction_errors_all[n_components + 1],
                                        alternative='greater')[1] for n_components in self.pvalue_all_n_components[0:-1]
                 ])
+                # Old selection
                 if np.max(self.pvalue_all) <= self.pthresh:
-                    index_selected = len(self.pvalue_all_n_components) - 1
+                    warnings.warn('All p-values are smaller than or equal to pthresh. Enlarge search space for n_components.',
+                                  UserWarning)
+                    index_selected_old = len(self.pvalue_all_n_components) - 1
                 else:
-                    index_selected = np.argmax(self.pvalue_all > self.pthresh)
+                    index_selected_old = np.argmax(self.pvalue_all > self.pthresh)
+                self.n_components_old = self.pvalue_all_n_components[index_selected_old]
+                # New selection
+                if np.min(self.pvalue_all) > self.pthresh:
+                    warnings.warn('All p-values are greater than pthresh. Enlarge search space for n_components.',
+                                  UserWarning)
+                    index_selected = 0
+                else:
+                    index_selected = np.flatnonzero(self.pvalue_all <= self.pthresh)[-1] + 1
                 self.n_components = self.pvalue_all_n_components[index_selected]
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
@@ -379,4 +451,208 @@ class DenovoSig:
         self.reconstruction_error = self.reconstruction_error_all[self.n_components]
         self.samplewise_reconstruction_errors = self.samplewise_reconstruction_errors_all[self.n_components]
 
+        return self
+
+    def set_params(self,
+                   use_catalog = None,
+                   catalog_name = None,
+                   thresh_match = None,
+                   thresh_new_sig = None,
+                   min_contribution = None,
+                   include_top = None,
+                   method_sparse = None,
+                   frac_thresh_base = None,
+                   frac_thresh_keep = None,
+                   frac_thresh = None,
+                   llh_thresh = None,
+                   exp_thresh = None):
+
+        if use_catalog != None:
+           self.use_catalog = use_catalog
+        if catalog_name != None:
+           self.catalog_name = catalog_name
+        if thresh_match != None:
+           self.thresh_match = thresh_match
+        if thresh_new_sig != None:
+           self.thresh_new_sig = thresh_new_sig
+        if min_contribution != None:
+           self.min_contribution = min_contribution
+        if include_top != None:
+            self.include_top = include_top
+        if method_sparse != None:
+            self.method_sparse = method_sparse
+        if frac_thresh_base != None:
+            self.frac_thresh_base = frac_thresh_base
+        if frac_thresh_keep != None:
+            self.frac_thresh_keep = frac_thresh_keep
+        if frac_thresh != None:
+            self.frac_thresh = frac_thresh
+        if llh_thresh != None:
+            self.llh_thresh = llh_thresh
+        if exp_thresh != None:
+            self.exp_thresh = exp_thresh
+
+        return self
+
+    def clone_model(self, X_new, grid_index = 1):
+        if grid_index >= self.n_grid:
+           ValueError('In clone_model grid_index is out of bounds of n_grid')
+
+        model_new = DenovoSig(X_new,
+                              min_n_components = self.n_components,
+                              max_n_components = self.n_components,
+                              init = self.init,
+                              method = self.method,
+                              bootstrap = self.bootstrap,
+                              n_replicates = self.n_replicates,
+                              max_iter = self.max_iter,
+                              min_iter = self.min_iter,
+                              conv_test_freq = self.conv_test_freq,
+                              conv_test_baseline = self.conv_test_baseline,
+                              tol = self.tol,
+                              ncpu = self.ncpu,
+                              verbose = self.verbose,
+                              # mvnmf specific:
+                              mvnmf_hyperparameter_method = self.mvnmf_hyperparameter_method,
+                              mvnmf_lambda_tilde_grid = self.mvnmf_lambda_tilde_grid,
+                              mvnmf_delta = self.mvnmf_delta,
+                              mvnmf_gamma = self.mvnmf_gamma,
+                              mvnmf_pthresh = self.mvnmf_pthresh,
+                              use_catalog = self.use_catalog,
+                              catalog_name = self.catalog_name,
+                              method_sparse = self.method_sparse,
+                              features = self.features)
+        if self.n_grid > 1:
+            model_new.set_params(frac_thresh_base = [self.frac_thresh_base_all[grid_index]],
+                                  frac_thresh_keep = [self.frac_thresh_keep_all[grid_index]],
+                                  frac_thresh = [self.frac_thresh_all[grid_index]],
+                                  llh_thresh = [self.llh_thresh_all[grid_index]],
+                                  exp_thresh = [self.exp_thresh_all[grid_index]])
+        else:
+            model_new.set_params(frac_thresh_base = [self.frac_thresh_base],
+                                  frac_thresh_keep = [self.frac_thresh_keep],
+                                  frac_thresh = [self.frac_thresh],
+                                  llh_thresh = [self.llh_thresh],
+                                  exp_thresh = [self.exp_thresh])
+
+        if self.use_catalog:
+            if self.n_grid > 1:
+                model_new.set_params(thresh_match = [self.thresh_match_all],
+                                     thresh_new_sig = [self.thresh_new_sig_all],
+                                     min_contribution = [self.min_contribution_all],
+                                     include_top = [self.include_top_all])
+            else:
+                model_new.set_params(thresh_match = [self.thresh_match],
+                                     thresh_new_sig = [self.thresh_new_sig],
+                                     min_contribution = [self.min_contribution],
+                                     include_top = [self.include_top])
+        return model_new
+
+
+    def clear_grid(self):
+        if hasattr(self, 'frac_thresh_base_all'):
+            self.frac_thresh_base_all = None
+        if hasattr(self, 'frac_thresh_keep_all'):
+            self.frac_thresh_keep_all = None
+        if hasattr(self, 'llh_thresh_all'):
+            self.llh_thresh_all = None
+        if hasattr(self, 'exp_thresh_all'):
+            self.exp_thresh_all = None
+        if hasattr(self, 'reconstruction_error_s_all'):
+            self.reconstruction_error_s_all = None
+        if hasattr(self, 'thresh_match_all'):
+            self.thresh_match_all= None
+        if hasattr(self, 'thresh_new_sig_all'):
+            self.thresh_new_sig_all = None
+        if hasattr(self, 'min_contribution_all'):
+            self.min_contribution_all = None
+        if hasattr(self, 'include_top_all'):
+            self.include_top_all = None
+        return self
+
+    def run_reassign(self, validation_output_file = None, use_refit = False, clear = True):
+        W_s, H_s, signames, reconstruction_error_s_all, n_grid, frac_thresh_base_all, frac_thresh_keep_all, frac_thresh_all, llh_thresh_all, exp_thresh_all, thresh_match_all, thresh_new_sig_all, min_contribution_all, include_top_all = reassign(self)
+
+
+        # User might want to keep the same model and do a second reassignment
+        # Because if the size of parameters is 1 attributes that do not end
+        # all are saved this can result in having results from two different
+        # reassignment calls
+
+
+        if clear:
+            if hasattr(self, 'W_s'):
+                self.W_s = None
+            if hasattr(self, 'H_s'):
+                self.H_s = None
+            if hasattr(self, 'signature_names'):
+                self.signature_names = None
+            if hasattr(self, 'reconstruction_error_s'):
+                self.reconstruction_error_s = None
+            if hasattr(self, 'W_s_all'):
+                self.W_s_all = None
+            if hasattr(self, 'H_s_all'):
+                self.H_s_all = None
+            if hasattr(self, 'signature_names_all'):
+                self.signature_names_all = None
+            self.clear_grid()
+
+        self.n_grid = n_grid
+
+        if n_grid == 1:
+            self.W_s = W_s[0]
+            self.H_s = H_s[0]
+            self.signature_names = signames[0]
+            self.reconstruction_error_s = reconstruction_error_s_all[0]
+        else:
+            self.W_s_all = W_s
+            self.H_s_all = H_s
+            self.signature_names_all = signames
+            self.frac_thresh_base_all = frac_thresh_base_all
+            self.frac_thresh_all = frac_thresh_all
+            self.frac_thresh_keep_all = frac_thresh_keep_all
+            self.llh_thresh_all = llh_thresh_all
+            self.exp_thresh_all = exp_thresh_all
+            self.reconstruction_error_s_all = reconstruction_error_s_all
+            if len(thresh_match_all) > 0:
+                 self.thresh_match_all = thresh_match_all
+            if len(thresh_new_sig_all):
+                self.thresh_new_sig_all = thresh_new_sig_all
+            if len(min_contribution_all):
+                self.min_contribution_all = min_contribution_all
+            if len(include_top_all) > 0:
+                self.include_top_all = include_top_all
+        return self
+
+    def validate_assignment(self, validation_output_file = None, use_refit = False, clear_grid = False):
+        W_simul, H_simul, X_simul, best_grid_index, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self, validation_output_file = validation_output_file, use_refit = use_refit)
+        self.W_simul = W_simul
+        self.H_simul = H_simul
+        self.X_simul = X_simul
+        self.best_grid_index = best_grid_index
+        self.error_W_simul = error_W
+        self.error_H_simul = error_H
+        self.dist_W_simul = dist_W
+        self.dist_max_simul = dist_max
+        self.dist_max_simul_sig_index = dist_max_sig_index
+        self.dist_max_simul_all = dist_max_all
+        self.dist_max_simul_sig_index_all = dist_max_sig_index_all
+
+        if self.n_grid > 1:
+            self.W_s = self.W_s_all[best_grid_index]
+            self.H_s = self.H_s_all[best_grid_index]
+            self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index]
+            self.set_params(frac_thresh_base = [self.frac_thresh_base_all[best_grid_index]],
+                            frac_thresh_keep = [self.frac_thresh_keep_all[best_grid_index]],
+                            frac_thresh = [self.frac_thresh_all[best_grid_index]],
+                            llh_thresh = [self.llh_thresh_all[best_grid_index]],
+                            exp_thresh = [self.exp_thresh_all[best_grid_index]])
+            if self.use_catalog:
+                self.set_params(thresh_match = [self.thresh_match_all[best_grid_index]],
+                                thresh_new_sig = [self.thresh_new_sig_all[best_grid_index]],
+                                min_contribution = [self.min_contribution_all[best_grid_index]],
+                                include_top = [self.include_top_all[best_grid_index]])
+
+        if clear_grid:
+            self.clear_grid()
         return self
