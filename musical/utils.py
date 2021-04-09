@@ -178,7 +178,7 @@ def bootstrap_count_matrix(X):
     X_bootstrapped = []
     for x in X.T:
         N = int(round(np.sum(x)))
-        indices = np.random.choice(n_features, size=N, replace=True, p=x/N)
+        indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
         X_bootstrapped.append([np.sum(indices == i)
                                for i in range(0, n_features)])
     X_bootstrapped = np.array(X_bootstrapped).T
@@ -285,7 +285,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     data = []
     for item in combs:
         x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
-        if np.amin(x) < min_contribution: 
+        if np.amin(x) < min_contribution:
             continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
@@ -293,13 +293,13 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
         match = data[0][0]
         coef = data[0][1]
         cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
-        return match, cos, coef    
+        return match, cos, coef
     return -1,-1,-1
 
 def tag_similar_signatures(W, metric = 'cosine'):
     pdist = pairwise_distances(W.T, metric = metric)
     n_signatures = W.shape[1]
-    similar_signatures = []    
+    similar_signatures = []
     for i in  range(0, n_signatures):
         inds = np.where(pdist[i, :] < 0.05)
         similar_signatures[i] = inds
