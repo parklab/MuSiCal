@@ -102,6 +102,7 @@ class DenovoSig:
                  max_n_components=None,
                  init='random',
                  method='nmf',
+                 normalize_X=False, # whether or not to normalize the input matrix for NMF/mvNMF
                  bootstrap=True,
                  n_replicates=100,
                  max_iter=1000000,
@@ -146,6 +147,7 @@ class DenovoSig:
         self.n_components_all = np.arange(self.min_n_components, self.max_n_components + 1)
         self.init = init
         self.method = method
+        self.normalize_X = normalize_X
         self.bootstrap = bootstrap
         self.n_replicates = n_replicates
         self.max_iter = max_iter
@@ -190,6 +192,8 @@ class DenovoSig:
                 X_in = bootstrap_count_matrix(self.X)
             else:
                 X_in = self.X
+            if self.normalize_X:
+                X_in = normalize(X_in, norm='l1', axis=0)
             model = NMF(X_in,
                         n_components,
                         init=self.init,
@@ -209,6 +213,8 @@ class DenovoSig:
                     X_in = bootstrap_count_matrix(self.X)
                 else:
                     X_in = self.X
+                if self.normalize_X:
+                    X_in = normalize(X_in, norm='l1', axis=0)
                 model = wrappedMVNMF(X_in,
                                      n_components,
                                      init=self.init,
@@ -233,6 +239,8 @@ class DenovoSig:
                     X_in = bootstrap_count_matrix(self.X)
                 else:
                     X_in = self.X
+                if self.normalize_X:
+                    X_in = normalize(X_in, norm='l1', axis=0)
                 model = MVNMF(X_in,
                               n_components,
                               init=self.init,
@@ -254,6 +262,8 @@ class DenovoSig:
                     X_in = bootstrap_count_matrix(self.X)
                 else:
                     X_in = self.X
+                if self.normalize_X:
+                    X_in = normalize(X_in, norm='l1', axis=0)
                 model = MVNMF(X_in,
                               n_components,
                               init=self.init,
@@ -313,6 +323,8 @@ class DenovoSig:
                         X_in = bootstrap_count_matrix(self.X)
                     else:
                         X_in = self.X
+                    if self.normalize_X:
+                        X_in = normalize(X_in, norm='l1', axis=0)
                     model = wrappedMVNMF(X_in,
                                          n_components,
                                          init=self.init,
