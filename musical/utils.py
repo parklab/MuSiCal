@@ -261,7 +261,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     data = []
     for item in combs:
         x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
-        if np.amin(x) < min_contribution:
+        if np.min(x) < min_contribution:
             continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
@@ -286,7 +286,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     data = []
     for item in combs:
         x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
-        if np.amin(x) < min_contribution:
+        if np.min(x) < min_contribution:
             continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
@@ -295,7 +295,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
         coef = data[0][1]
         cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
         return match, cos, coef
-    return -1,-1,-1
+    return (), np.nan, None
 
 def tag_similar_signatures(W, metric = 'cosine'):
     pdist = pairwise_distances(W.T, metric = metric)
