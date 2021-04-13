@@ -84,6 +84,141 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
         raise ValueError('Only method = hierarchical is implemented for _gather_results().')
 
 
+def _select_n_components(n_components_all, samplewise_reconstruction_errors_all, sil_score_all,
+                         pthresh=0.05, sil_score_mean_thresh=0.8, sil_score_min_thresh=0.2,
+                         method='algorithm1'):
+    """Select the best n_components based on reconstruction error and stability.
+
+    Parameters
+    ----------
+    n_components_all: array-like
+        All n_components tested.
+
+    samplewise_reconstruction_errors_all : dict
+        Dictionary of samplewise reconstruction errors.
+
+    sil_score_all : dict
+        Dictionary of signature-wise silhouette scores.
+
+    pthresh : float
+        Threshold for p-value.
+
+    sil_score_mean_thresh : float
+        Minimum required mean sil score for a solution to be considered stable.
+
+    sil_score_min_thresh : float
+        Minimum required min sil score for a solution to be considered stable.
+
+    method : str, 'algorithm1' | 'algorithm1.1' | 'algorithm2' | 'algorithm2.1'
+        Cf: selecting_n_components.pdf
+
+    TODO
+    ----------
+    1. Implement the method in SigProfilerExtractor.
+    """
+    n_components_all = np.sort(n_components_all)
+    ##### Stable solutions:
+    n_components_stable = []
+    for n_components in n_components_all:
+        if np.mean(sil_score_all[n_components]) >= sil_score_mean_thresh and np.min(sil_score_all[n_components]) >= sil_score_min_thresh:
+            n_components_stable.append(n_components)
+    n_components_stable = np.array(n_components_stable)
+
+    ##### If only 1 n_components value provided.
+    if len(n_components_all) == 0:
+        warnings.warn('Only 1 n_components value is tested. Selecting this n_components value.',
+                      UserWarning)
+        return n_components_all[0], n_components_stable, np.array([])
+
+    ##### Calculate p-values:
+    pvalue_all = np.array([
+        stats.mannwhitneyu(samplewise_reconstruction_errors_all[n_components],
+                           samplewise_reconstruction_errors_all[n_components + 1],
+                           alternative='greater')[1] for n_components in n_components_all[0:-1]
+    ])
+
+    ##### Select n_components
+    if method == 'algorithm1' or method == 'algorithm1.1':
+        n_components_significant = []
+        for p, n_components in zip(pvalue_all, n_components_all[1:]):
+            if p <= pthresh:
+                n_components_significant.append(n_components)
+        n_components_significant = np.array(n_components_significant)
+        if len(n_components_stable) == 0 and len(n_components_significant) == 0:
+            warnings.warn('No n_components values with stable solutions are found and '
+                          'no n_components values with significant p-values are found. '
+                          'Selecting the smallest n_components tested.',
+                          UserWarning)
+            n_components_selected = n_components_all[0]
+        elif len(n_components_significant) == 0:
+            warnings.warn('No n_components values with significant p-values are found. '
+                          'Selecting the smallest n_components with stable solutions.',
+                          UserWarning)
+            n_components_selected = n_components_stable[0]
+        elif len(n_components_stable) == 0:
+            warnings.warn('No n_components values with stable solutions are found. '
+                          'Selecting the greatest n_components with significant p-values.',
+                          UserWarning)
+            n_components_selected = n_components_significant[-1]
+        else:
+            n_components_intersect = np.array(list(set(n_components_significant).intersection(n_components_stable)))
+            if len(n_components_intersect) == 0:
+                if method == 'algorithm1':
+                    warnings.warn('Intersection of stable and significant n_components is empty. '
+                                  'Selecting the greatest n_components with significant p-values.',
+                                  UserWarning)
+                    n_components_selected = n_components_significant[-1]
+                elif method == 'algorithm1.1':
+                    warnings.warn('Intersection of stable and significant n_components is empty. '
+                                  'Selecting the smallest n_components with stable solutions.',
+                                  UserWarning)
+                    n_components_selected = n_components_stable[0]
+            else:
+                n_components_selected = np.max(n_components_intersect)
+    elif method == 'algorithm2' or method == 'algorithm2.1':
+        n_components_nonsignificant = []
+        for p, n_components in zip(pvalue_all, n_components_all[0:-1]):
+            if p > pthresh:
+                n_components_nonsignificant.append(n_components)
+        n_components_nonsignificant = np.array(n_components_nonsignificant)
+        if len(n_components_stable) == 0 and len(n_components_nonsignificant) == 0:
+            warnings.warn('No n_components values with stable solutions are found and '
+                          'no n_components values with nonsignificant p-values are found. '
+                          'Selecting the greatest n_components tested.',
+                          UserWarning)
+            n_components_selected = n_components_all[-1]
+        elif len(n_components_nonsignificant) == 0:
+            warnings.warn('No n_components values with nonsignificant p-values are found. '
+                          'Selecting the greatest n_components with stable solutions.',
+                          UserWarning)
+            n_components_selected = n_components_stable[-1]
+        elif len(n_components_stable) == 0:
+            warnings.warn('No n_components values with stable solutions are found. '
+                          'Selecting the smallest n_components with nonsignificant p-values.',
+                          UserWarning)
+            n_components_selected = n_components_nonsignificant[0]
+        else:
+            n_components_intersect = np.array(list(set(n_components_nonsignificant).intersection(n_components_stable)))
+            if len(n_components_intersect) == 0:
+                if method == 'algorithm2':
+                    warnings.warn('Intersection of stable and nonsignificant n_components is empty. '
+                                  'Selecting the smallest n_components with nonsignificant p-values.',
+                                  UserWarning)
+                    n_components_selected = n_components_nonsignificant[0]
+                elif method == 'algorithm2.1':
+                    warnings.warn('Intersection of stable and nonsignificant n_components is empty. '
+                                  'Selecting the greatest n_components with stable solutions.',
+                                  UserWarning)
+                    n_components_selected = n_components_stable[-1]
+            else:
+                n_components_selected = np.min(n_components_intersect)
+    else:
+        raise ValueError('Invalid method for _select_n_components.')
+
+    return n_components_selected, n_components_stable, pvalue_all
+
+
+
 class DenovoSig:
     """De novo signature extraction
 
@@ -391,119 +526,15 @@ class DenovoSig:
         self.samplewise_reconstruction_errors_all = {
             n_components: _samplewise_error(self.X, self.W_all[n_components] @ self.H_all[n_components]) for n_components in self.n_components_all
         }
-        # If there is only 1 n_components tested, return its result
-        if len(self.n_components_all) == 1:
-            warnings.warn('Only 1 n_components value is tested.',
-                          UserWarning)
-            self.n_components = self.n_components_all[0]
-            self.n_components_old = self.n_components
-            self.n_components_old2 = self.n_components
-            if np.mean(self.sil_score_all[self.n_components]) >= 0.8 and np.min(self.sil_score_all[self.n_components]) >= 0.2:
-                self.min_n_components_stable = self.n_components
-                self.max_n_components_stable = self.n_components
-            else:
-                self.min_n_components_stable = None
-                self.max_n_components_stable = None
-            self.pvalue_all = None
-            self.pvalue_all_old = None
-            self.pvalue_all_n_components_old = None
-        # If there are more than 1 n_components tested:
-        else:
-            # First get stable n_components
-            candidates = []
-            for n_components in self.n_components_all:
-                if np.mean(self.sil_score_all[n_components]) >= 0.8 and np.min(self.sil_score_all[n_components]) >= 0.2:
-                    candidates.append(n_components)
-            candidates = np.array(candidates)
-            self.n_components_stable = candidates
-            ###################################################################
-            ########################## Old selections #########################
-            ###################################################################
-            # If there is only 1 stable n_components, we take it:
-            if len(candidates) == 1:
-                warnings.warn('Old and Old2: Only 1 n_components value with stable solutions is found.',
-                              UserWarning)
-                self.n_components_old = candidates[0]
-                self.n_components_old2 = candidates[0]
-                self.min_n_components_stable = self.n_components_old
-                self.max_n_components_stable = self.n_components_old
-                self.pvalue_all_old = None
-                self.pvalue_all_n_components_old = None
-            else:
-                # If there are no stable n_components, we do p-value tests for all n_components
-                if len(candidates) == 0:
-                    self.min_n_components_stable = None
-                    self.max_n_components_stable = None
-                    warnings.warn('Old and Old2: No n_components values with stable solutions are found.',
-                                  UserWarning)
-                    self.pvalue_all_n_components_old = self.n_components_all
-                else:
-                    self.min_n_components_stable = np.min(candidates)
-                    self.max_n_components_stable = np.max(candidates)
-                    self.pvalue_all_n_components_old = np.arange(self.min_n_components_stable, self.max_n_components_stable + 1)
-                self.pvalue_all_old = np.array([
-                    stats.mannwhitneyu(self.samplewise_reconstruction_errors_all[n_components],
-                                       self.samplewise_reconstruction_errors_all[n_components + 1],
-                                       alternative='greater')[1] for n_components in self.pvalue_all_n_components_old[0:-1]
-                ])
-                # Old selection
-                if np.max(self.pvalue_all_old) <= self.pthresh:
-                    warnings.warn('Old: All p-values are smaller than or equal to pthresh. Enlarge search space for n_components.',
-                                  UserWarning)
-                    index_selected_old = len(self.pvalue_all_n_components_old) - 1
-                else:
-                    index_selected_old = np.argmax(self.pvalue_all_old > self.pthresh)
-                self.n_components_old = self.pvalue_all_n_components_old[index_selected_old]
-                # Old selection - 2
-                if np.min(self.pvalue_all_old) > self.pthresh:
-                    warnings.warn('Old2: All p-values are greater than pthresh. Enlarge search space for n_components.',
-                                  UserWarning)
-                    index_selected_old2 = 0
-                else:
-                    index_selected_old2 = np.flatnonzero(self.pvalue_all_old <= self.pthresh)[-1] + 1
-                self.n_components_old2 = self.pvalue_all_n_components_old[index_selected_old2]
-            ###################################################################
-            ####################### Improved selection ########################
-            ###################################################################
-            # First, we do p-value calculation for all pairs
-            self.pvalue_all = np.array([
-                stats.mannwhitneyu(self.samplewise_reconstruction_errors_all[n_components],
-                                   self.samplewise_reconstruction_errors_all[n_components + 1],
-                                   alternative='greater')[1] for n_components in self.n_components_all[0:-1]
-            ])
-            # Then, we select those n_components that has significant p-value for n_components - 1 vs. n_components comparison
-            significant_n_components = []
-            for p, n_components in zip(self.pvalue_all, self.n_components_all[1:]):
-                if p <= self.pthresh:
-                    significant_n_components.append(n_components)
-            significant_n_components = np.array(significant_n_components)
-            if len(significant_n_components) == 0 and len(candidates) == 0:
-                warnings.warn('No n_components values with stable solutions are found and '
-                              'no n_components values with significant p-values are found. '
-                              'Returning the smallest n_components tested.',
-                              UserWarning)
-                self.n_components = self.n_components_all[0]
-            elif len(significant_n_components) == 0:
-                warnings.warn('No n_components values with significant p-values are found. '
-                              'Returning the smallest n_components with stable solutions.',
-                              UserWarning)
-                self.n_components = candidates[0]
-            elif len(candidates) == 0:
-                warnings.warn('No n_components values with stable solutions are found. '
-                              'Returning the largest n_components with significant p-values.',
-                              UserWarning)
-                self.n_components = significant_n_components[-1]
-            else:
-                # Get the intersection between stable and significant n_components
-                intersected_n_components = np.array(list(set(significant_n_components).intersection(candidates)))
-                if len(intersected_n_components) == 0:
-                    warnings.warn('Intersection of stable and significant n_components is empty. '
-                                  'Returning the largest n_components with significant p-values.',
-                                  UserWarning)
-                    self.n_components = significant_n_components[-1]
-                else:
-                    self.n_components = np.max(intersected_n_components)
-
+        self.n_components, self.n_components_stable, self.pvalue_all = _select_n_components(
+            self.n_components_all,
+            self.samplewise_reconstruction_errors_all,
+            self.sil_score_all,
+            pthresh=self.pthresh,
+            sil_score_mean_thresh=0.8,
+            sil_score_min_thresh=0.2,
+            method='algorithm1'
+        )
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
         self.sil_score = self.sil_score_all[self.n_components]
