@@ -13,7 +13,7 @@ import os
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
-from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error
+from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair
 from .nnls import nnls
 from .refit import reassign
 from .validate import validate
@@ -80,8 +80,32 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
         return W, H, sil_score, sil_score_mean, len(Ws)
+    elif method == 'matching':
+        Ws_matched = [Ws[0]]
+        for W in Ws[1:]:
+            W_matched, _, _ = match_catalog_pair(Ws[0], W)
+            Ws_matched.append(W_matched)
+        Ws_matched = np.array(Ws_matched)
+        W = np.mean(Ws_matched, axis=0)
+        W = normalize(W, norm='l1', axis=0)
+        H = nnls(X, W)
+        # Distance matrix and cluster membership
+        sigs = np.concatenate(Ws_matched, axis=1)
+        sigs = normalize(sigs, norm='l1', axis=0)
+        d = sp.spatial.distance.pdist(sigs.T, metric='cosine')
+        d = d.clip(0)
+        d_square_form = sp.spatial.distance.squareform(d)
+        cluster_membership = np.tile(np.arange(1, n_components + 1), len(Ws))
+        # Calculate sil_score
+        samplewise_sil_score = silhouette_samples(d_square_form, cluster_membership, metric='precomputed')
+        sil_score = []
+        for i in range(0, n_components):
+            sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
+        sil_score = np.array(sil_score)
+        sil_score_mean = np.mean(samplewise_sil_score)
+        return W, H, sil_score, sil_score_mean, len(Ws)
     else:
-        raise ValueError('Only method = hierarchical is implemented for _gather_results().')
+        raise ValueError('Invalid method for _gather_results().')
 
 
 def _select_n_components(n_components_all, samplewise_reconstruction_errors_all, sil_score_all,
