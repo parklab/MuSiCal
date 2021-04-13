@@ -13,17 +13,22 @@ import os
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
-from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair
+from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test
 from .nnls import nnls
 from .refit import reassign
 from .validate import validate
 
-def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=10):
+def _gather_results(X, Ws, Hs=None, method='hierarchical',
+                    filter=False, filter_method='error_distribution', filter_thresh=0.05, filter_percentile=95):
     """Gather NMF or mvNMF results
 
     TODO
     ----------
     1. Replicate the clustering method in SigProfilerExtractor.
+    2. Currently for filtering based on tail distributions, we use a fixed percentile as a threshold for the definition of tails.
+        Alternatively, we can try to fit a gaussian mixture model to the samplewise error distribution (combined), and decide
+        whether there is a cluster of samples that are not reconstructed well. If there is, then we ues the threshold defined by
+        the mixture model to define tails. If there isn't, then we simply skip tail based filtering. 
     """
     n_features, n_samples = X.shape
     n_components = Ws[0].shape[1]
@@ -35,8 +40,30 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
             if Hs is None:
                 raise ValueError('If filtering is to be performed, Hs must be supplied.')
             errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
-            retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
-            Ws = [Ws[i] for i in retained_indices]
+            if filter_method == 'error_distribution':
+                samplewise_errors = [_samplewise_error(X, W @ H) for W, H in zip(Ws, Hs)]
+                best_index = np.argmin(errors)
+                pvalues = np.array([
+                    stats.mannwhitneyu(samplewise_errors[i],
+                                       samplewise_errors[best_index],
+                                       alternative='greater')[1] for i in range(0, len(Ws))
+                ])
+                pvalues_tail = np.array([
+                    differential_tail_test(samplewise_errors[i],
+                                           samplewise_errors[best_index],
+                                           percentile=filter_percentile,
+                                           alternative='greater')[1] for i in range(0, len(Ws))
+                ])
+                retained_indices = np.arange(0, len(Ws))[np.logical_and(pvalues > filter_thresh, pvalues_tail > filter_thresh)]
+                Ws = [Ws[i] for i in retained_indices]
+            elif filter_method == 'error_MAE':
+                retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= filter_thresh*stats.median_abs_deviation(errors)]
+                Ws = [Ws[i] for i in retained_indices]
+            elif filter_method == 'error_min':
+                retained_indices = np.arange(0, len(Ws))[errors <= (filter_thresh + 1.0)*np.min(errors)]
+                Ws = [Ws[i] for i in retained_indices]
+            else:
+                raise ValueError('Invalid filter_method for _gather_results().')
     ### If only one solution:
     if len(Ws) == 1:
         W = Ws[0]

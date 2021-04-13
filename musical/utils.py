@@ -6,6 +6,7 @@ from sklearn.metrics import pairwise_distances
 from scipy.optimize import linear_sum_assignment
 import itertools
 import scipy as sp
+import scipy.stats as stats
 from operator import itemgetter
 
 ##################
@@ -307,3 +308,35 @@ def tag_similar_signatures(W, metric = 'cosine'):
 
 def save_signature_exposure_tables(model):
     model.W
+
+
+def differential_tail_test(a, b, percentile=99, alternative='two-sided'):
+    """Test if distribution tails are different (pubmed: 18655712)
+
+    Parameters
+    ----------
+    a, b : array-like
+        a, b must be positive.
+
+    percentile : float
+        Percentile threshold above which data points are considered tails.
+
+    alternative : {'two-sided', 'less', 'greater'}
+        Defines the alternative hypothesis. For example, when set to 'greater',
+        the alternative hypothesis is that the tail of a is greater than the tail
+        of b.
+    """
+    a = np.array(a)
+    b = np.array(b)
+    comb = np.concatenate([a, b])
+    thresh = np.percentile(comb, percentile)
+    za = a * (a > thresh)
+    zb = b * (b > thresh)
+    # If za and zb contain identical values, e.g., both za and zb are all zeros.
+    if (np.sort(za) == np.sort(zb)).all():
+        if alternative == 'two-sided':
+            return np.nan, 1.0
+        else:
+            return np.nan, 0.5
+    statistic, pvalue = stats.mannwhitneyu(za, zb, alternative=alternative)
+    return statistic, pvalue
