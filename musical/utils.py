@@ -310,7 +310,7 @@ def save_signature_exposure_tables(model):
     model.W
 
 
-def differential_tail_test(a, b, percentile=99, alternative='two-sided'):
+def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
     """Test if distribution tails are different (pubmed: 18655712)
 
     Parameters

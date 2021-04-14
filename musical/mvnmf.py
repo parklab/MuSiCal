@@ -14,7 +14,7 @@ import warnings
 import multiprocessing
 import os
 
-from .utils import beta_divergence, normalize_WH, _samplewise_error
+from .utils import beta_divergence, normalize_WH, _samplewise_error, differential_tail_test
 from .initialization import initialize_nmf
 
 
@@ -358,6 +358,8 @@ class wrappedMVNMF:
     ----------
     1. I removed eng from __init__ and did not set eng as an attribute. Otherwise pickle will have
     a problem when saving the class instance, because pickle does not deal with matlab well.
+    2. Alternative methods for selecting lambda_tilde: e.g., require that the reconstruction error is within
+    (1 + thresh) * NMF reconstruction error, where thresh could be 0.1 for example. 
     """
     def __init__(self,
                  X,
@@ -476,23 +478,26 @@ class wrappedMVNMF:
         ])
         # Then perform statistical tests
         # Alternative tests we can use: ks_2samp, ttest_ind (perhaps on log errors)
-        #self.pvalue_grid = np.array([
-        #    stats.mannwhitneyu(self.samplewise_reconstruction_errors_grid[i, :],
-        #                       self.samplewise_reconstruction_errors_grid[i+1, :],
-        #                       alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
-        #])
         self.pvalue_grid = np.array([
-            stats.ttest_ind(self.samplewise_reconstruction_errors_grid[i, :],
-                            self.samplewise_reconstruction_errors_grid[i+1, :],
-                            alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
+            stats.mannwhitneyu(self.samplewise_reconstruction_errors_grid[i, :],
+                               self.samplewise_reconstruction_errors_grid[i+1, :],
+                               alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
+        ])
+        self.pvalue_tail_grid = np.array([
+            differential_tail_test(self.samplewise_reconstruction_errors_grid[i, :],
+                                   self.samplewise_reconstruction_errors_grid[i+1, :],
+                                   percentile=95,
+                                   alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
         ])
         # Select the best model
-        if np.min(self.pvalue_grid) > self.pthresh:
+        indicator = np.logical_or(self.pvalue_grid <= self.pthresh, self.pvalue_tail_grid <= self.pthresh)
+        if indicator.any():
+            index_selected = np.argmax(indicator)
+        else: # All False
             warnings.warn('No p-value is smaller than or equal to %.3g. The largest lambda_tilde is selected. Enlarge the search grid of lambda_tilde.' % self.pthresh,
                           UserWarning)
-            index_selected = len(self.pvalue_grid) - 1
-        else:
-            index_selected = np.argmax(self.pvalue_grid <= self.pthresh)
+            index_selected = len(self.pvalue_grid)
+        #
         self.lambda_tilde = self.lambda_tilde_grid[index_selected]
         self.model = models[index_selected]
         self.W = self.model.W
