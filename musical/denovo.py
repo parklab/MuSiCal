@@ -10,6 +10,8 @@ import warnings
 import time
 import multiprocessing
 import os
+import pandas as pd
+from operator import itemgetter
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
@@ -28,7 +30,7 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical',
     2. Currently for filtering based on tail distributions, we use a fixed percentile as a threshold for the definition of tails.
         Alternatively, we can try to fit a gaussian mixture model to the samplewise error distribution (combined), and decide
         whether there is a cluster of samples that are not reconstructed well. If there is, then we ues the threshold defined by
-        the mixture model to define tails. If there isn't, then we simply skip tail based filtering. 
+        the mixture model to define tails. If there isn't, then we simply skip tail based filtering.
     """
     n_features, n_samples = X.shape
     n_components = Ws[0].shape[1]
@@ -112,6 +114,103 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical',
         for W in Ws[1:]:
             W_matched, _, _ = match_catalog_pair(Ws[0], W)
             Ws_matched.append(W_matched)
+        Ws_matched = np.array(Ws_matched)
+        W = np.mean(Ws_matched, axis=0)
+        W = normalize(W, norm='l1', axis=0)
+        H = nnls(X, W)
+        # Distance matrix and cluster membership
+        sigs = np.concatenate(Ws_matched, axis=1)
+        sigs = normalize(sigs, norm='l1', axis=0)
+        d = sp.spatial.distance.pdist(sigs.T, metric='cosine')
+        d = d.clip(0)
+        d_square_form = sp.spatial.distance.squareform(d)
+        cluster_membership = np.tile(np.arange(1, n_components + 1), len(Ws))
+        # Calculate sil_score
+        samplewise_sil_score = silhouette_samples(d_square_form, cluster_membership, metric='precomputed')
+        sil_score = []
+        for i in range(0, n_components):
+            sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
+        sil_score = np.array(sil_score)
+        sil_score_mean = np.mean(samplewise_sil_score)
+        return W, H, sil_score, sil_score_mean, len(Ws)
+    elif method == 'cluster_by_matching':
+        # pubmed: 32118208
+        ### First, get all matchings
+        matchings = []
+        for i in range(0, len(Ws)):
+            for j in range(i, len(Ws)):
+                if i != j:
+                    W1 = Ws[i]
+                    W2 = Ws[j]
+                    _, col_ind, pdist = match_catalog_pair(W1, W2, metric='cosine')
+                    row_ind = np.arange(0, n_components)
+                    matchings.append(
+                        [pdist[row_ind, col_ind].sum(),
+                         pd.DataFrame(np.array([np.arange(0, n_components), col_ind]).T, columns=[i, j])]
+                    )
+        matchings = sorted(matchings, key=itemgetter(0))
+        ### Initialize
+        result = [matchings[0][1]]
+        matchings = matchings[1:]
+        ### Select matchings
+        while len(matchings) > 0:
+            # Check stopping criterion
+            if len(result) == 1 and sorted(result[0].columns.values.tolist()) == list(range(0, len(Ws))):
+                break
+            # Processing
+            match = matchings[0]
+            df = match[1]
+            col1 = df.columns[0]
+            col2 = df.columns[1]
+            col1_in = -1
+            col2_in = -1
+            # Check if already in the result
+            for i, item in zip(range(len(result)), result):
+                if col1 in item.columns.values:
+                    col1_in = i
+                if col2 in item.columns.values:
+                    col2_in = i
+            # Add or match or pass
+            if col1_in == -1 and col2_in == -1:
+                result.append(df)
+            elif col1_in == -1:
+                df_old = result[col2_in]
+                df_old = df_old.sort_values(by=col2)
+                df = df.sort_values(by=col2)
+                df_old[col1] = df[col1].values
+                result[col2_in] = df_old
+            elif col2_in == -1:
+                df_old = result[col1_in]
+                df_old = df_old.sort_values(by=col1)
+                df = df.sort_values(by=col1)
+                df_old[col2] = df[col2].values
+                result[col1_in] = df_old
+            else:
+                if col1_in == col2_in:
+                    pass
+                else:
+                    df_old1 = result[col1_in]
+                    df_old2 = result[col2_in]
+                    df_old1 = df_old1.sort_values(by=col1)
+                    df = df.sort_values(by=col1)
+                    df_old1[col2] = df[col2].values
+                    df_old1 = df_old1.sort_values(by=col2)
+                    df_old2 = df_old2.sort_values(by=col2)
+                    for col in df_old2.columns:
+                        if col != col2:
+                            df_old1[col] = df_old2[col].values
+                    result = [result[i] for i in range(0, len(result)) if i != col1_in and i != col2_in]
+                    result.append(df_old1)
+            #
+            matchings = matchings[1:]
+        if len(result) != 1:
+            raise RuntimeError('Clustering by matching resulted in a result of length != 1.')
+        result = result[0]
+        result = result[sorted(result.columns.values.tolist())]
+        ### Gather results
+        Ws_matched = []
+        for W, i in zip(Ws, range(0, len(Ws))):
+            Ws_matched.append(W[:, result[i].values.tolist()])
         Ws_matched = np.array(Ws_matched)
         W = np.mean(Ws_matched, axis=0)
         W = normalize(W, norm='l1', axis=0)
