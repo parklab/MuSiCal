@@ -275,7 +275,7 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     n_components_stable = np.array(n_components_stable)
 
     ##### If only 1 n_components value provided.
-    if len(n_components_all) == 0:
+    if len(n_components_all) == 1:
         warnings.warn('Only 1 n_components value is tested. Selecting this n_components value.',
                       UserWarning)
         return n_components_all[0], n_components_stable, np.array([])
