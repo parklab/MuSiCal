@@ -20,7 +20,7 @@ from .nnls import nnls
 from .refit import reassign
 from .validate import validate
 
-def _gather_results(X, Ws, Hs=None, method='hierarchical',
+def _gather_results(X, Ws, Hs=None, method='hierarchical', n_components=None, 
                     filter=False, filter_method='error_distribution', filter_thresh=0.05, filter_percentile=95):
     """Gather NMF or mvNMF results
 
@@ -33,7 +33,8 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical',
         the mixture model to define tails. If there isn't, then we simply skip tail based filtering.
     """
     n_features, n_samples = X.shape
-    n_components = Ws[0].shape[1]
+    if n_components is None:
+        n_components = Ws[0].shape[1]
     # Filtering
     if filter:
         if len(Ws) == 1:
