@@ -36,6 +36,8 @@ Currently, there are two places where matlab codes could be used: SPA initializa
 
 ## Usage
 
+The input matrix X can be a numpy array or a pandas DataFrame. Note that columns should be samples and rows should be features (e.g., 96 trinucleotide features).
+
 ### Running a single NMF
 For running NMF, one can use
 ```
@@ -43,7 +45,7 @@ import musical
 model = musical.NMF(X, n_components, init='random')
 model.fit()
 ```
-Then the result can be accessed through `model.W` and `model.H`.
+Then the result can be accessed through `model.W` (signatures) and `model.H` (exposures).
 
 
 ### Running a single mvNMF with pre-specified `lambda_tilde`
