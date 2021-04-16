@@ -20,7 +20,7 @@ from .nnls import nnls
 from .refit import reassign
 from .validate import validate
 
-def _gather_results(X, Ws, Hs=None, method='hierarchical', n_components=None, 
+def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=None, 
                     filter=False, filter_method='error_distribution', filter_thresh=0.05, filter_percentile=95):
     """Gather NMF or mvNMF results
 
