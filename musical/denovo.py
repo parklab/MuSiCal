@@ -10,23 +10,31 @@ import warnings
 import time
 import multiprocessing
 import os
+import pandas as pd
+from operator import itemgetter
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
-from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error
+from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test
 from .nnls import nnls
 from .refit import reassign
 from .validate import validate
 
-def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=10):
+def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=None, 
+                    filter=False, filter_method='error_distribution', filter_thresh=0.05, filter_percentile=95):
     """Gather NMF or mvNMF results
 
     TODO
     ----------
     1. Replicate the clustering method in SigProfilerExtractor.
+    2. Currently for filtering based on tail distributions, we use a fixed percentile as a threshold for the definition of tails.
+        Alternatively, we can try to fit a gaussian mixture model to the samplewise error distribution (combined), and decide
+        whether there is a cluster of samples that are not reconstructed well. If there is, then we ues the threshold defined by
+        the mixture model to define tails. If there isn't, then we simply skip tail based filtering.
     """
     n_features, n_samples = X.shape
-    n_components = Ws[0].shape[1]
+    if n_components is None:
+        n_components = Ws[0].shape[1]
     # Filtering
     if filter:
         if len(Ws) == 1:
@@ -35,8 +43,30 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
             if Hs is None:
                 raise ValueError('If filtering is to be performed, Hs must be supplied.')
             errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
-            retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
-            Ws = [Ws[i] for i in retained_indices]
+            if filter_method == 'error_distribution':
+                samplewise_errors = [_samplewise_error(X, W @ H) for W, H in zip(Ws, Hs)]
+                best_index = np.argmin(errors)
+                pvalues = np.array([
+                    stats.mannwhitneyu(samplewise_errors[i],
+                                       samplewise_errors[best_index],
+                                       alternative='greater')[1] for i in range(0, len(Ws))
+                ])
+                pvalues_tail = np.array([
+                    differential_tail_test(samplewise_errors[i],
+                                           samplewise_errors[best_index],
+                                           percentile=filter_percentile,
+                                           alternative='greater')[1] for i in range(0, len(Ws))
+                ])
+                retained_indices = np.arange(0, len(Ws))[np.logical_and(pvalues > filter_thresh, pvalues_tail > filter_thresh)]
+                Ws = [Ws[i] for i in retained_indices]
+            elif filter_method == 'error_MAE':
+                retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= filter_thresh*stats.median_abs_deviation(errors)]
+                Ws = [Ws[i] for i in retained_indices]
+            elif filter_method == 'error_min':
+                retained_indices = np.arange(0, len(Ws))[errors <= (filter_thresh + 1.0)*np.min(errors)]
+                Ws = [Ws[i] for i in retained_indices]
+            else:
+                raise ValueError('Invalid filter_method for _gather_results().')
     ### If only one solution:
     if len(Ws) == 1:
         W = Ws[0]
@@ -44,8 +74,9 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
         H = nnls(X, W)
         # Here we define the sil_score to be 1 when there is only one sample in each cluster.
         # This is different from the canonical definition, where it is 0.
+        # 20210415 - We change this to 0.0. When there is only 1 sample in the cluster, it means that solution is rare and thus not stable.
         sil_score = np.ones(n_components)
-        sil_score_mean = 1.0
+        sil_score_mean = 0.0
         return W, H, sil_score, sil_score_mean, len(Ws)
     ### If more than one solutions:
     ### If there is only 1 signature:
@@ -80,8 +111,264 @@ def _gather_results(X, Ws, Hs=None, method='hierarchical', filter=False, thresh=
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
         return W, H, sil_score, sil_score_mean, len(Ws)
+    elif method == 'matching':
+        Ws_matched = [Ws[0]]
+        for W in Ws[1:]:
+            W_matched, _, _ = match_catalog_pair(Ws[0], W)
+            Ws_matched.append(W_matched)
+        Ws_matched = np.array(Ws_matched)
+        W = np.mean(Ws_matched, axis=0)
+        W = normalize(W, norm='l1', axis=0)
+        H = nnls(X, W)
+        # Distance matrix and cluster membership
+        sigs = np.concatenate(Ws_matched, axis=1)
+        sigs = normalize(sigs, norm='l1', axis=0)
+        d = sp.spatial.distance.pdist(sigs.T, metric='cosine')
+        d = d.clip(0)
+        d_square_form = sp.spatial.distance.squareform(d)
+        cluster_membership = np.tile(np.arange(1, n_components + 1), len(Ws))
+        # Calculate sil_score
+        samplewise_sil_score = silhouette_samples(d_square_form, cluster_membership, metric='precomputed')
+        sil_score = []
+        for i in range(0, n_components):
+            sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
+        sil_score = np.array(sil_score)
+        sil_score_mean = np.mean(samplewise_sil_score)
+        return W, H, sil_score, sil_score_mean, len(Ws)
+    elif method == 'cluster_by_matching':
+        # pubmed: 32118208
+        ### First, get all matchings
+        matchings = []
+        for i in range(0, len(Ws)):
+            for j in range(i, len(Ws)):
+                if i != j:
+                    W1 = Ws[i]
+                    W2 = Ws[j]
+                    _, col_ind, pdist = match_catalog_pair(W1, W2, metric='cosine')
+                    row_ind = np.arange(0, n_components)
+                    matchings.append(
+                        [pdist[row_ind, col_ind].sum(),
+                         pd.DataFrame(np.array([np.arange(0, n_components), col_ind]).T, columns=[i, j])]
+                    )
+        matchings = sorted(matchings, key=itemgetter(0))
+        ### Initialize
+        result = [matchings[0][1]]
+        matchings = matchings[1:]
+        ### Select matchings
+        while len(matchings) > 0:
+            # Check stopping criterion
+            if len(result) == 1 and sorted(result[0].columns.values.tolist()) == list(range(0, len(Ws))):
+                break
+            # Processing
+            match = matchings[0]
+            df = match[1]
+            col1 = df.columns[0]
+            col2 = df.columns[1]
+            col1_in = -1
+            col2_in = -1
+            # Check if already in the result
+            for i, item in zip(range(len(result)), result):
+                if col1 in item.columns.values:
+                    col1_in = i
+                if col2 in item.columns.values:
+                    col2_in = i
+            # Add or match or pass
+            if col1_in == -1 and col2_in == -1:
+                result.append(df)
+            elif col1_in == -1:
+                df_old = result[col2_in]
+                df_old = df_old.sort_values(by=col2)
+                df = df.sort_values(by=col2)
+                df_old[col1] = df[col1].values
+                result[col2_in] = df_old
+            elif col2_in == -1:
+                df_old = result[col1_in]
+                df_old = df_old.sort_values(by=col1)
+                df = df.sort_values(by=col1)
+                df_old[col2] = df[col2].values
+                result[col1_in] = df_old
+            else:
+                if col1_in == col2_in:
+                    pass
+                else:
+                    df_old1 = result[col1_in]
+                    df_old2 = result[col2_in]
+                    df_old1 = df_old1.sort_values(by=col1)
+                    df = df.sort_values(by=col1)
+                    df_old1[col2] = df[col2].values
+                    df_old1 = df_old1.sort_values(by=col2)
+                    df_old2 = df_old2.sort_values(by=col2)
+                    for col in df_old2.columns:
+                        if col != col2:
+                            df_old1[col] = df_old2[col].values
+                    result = [result[i] for i in range(0, len(result)) if i != col1_in and i != col2_in]
+                    result.append(df_old1)
+            #
+            matchings = matchings[1:]
+        if len(result) != 1:
+            raise RuntimeError('Clustering by matching resulted in a result of length != 1.')
+        result = result[0]
+        result = result[sorted(result.columns.values.tolist())]
+        ### Gather results
+        Ws_matched = []
+        for W, i in zip(Ws, range(0, len(Ws))):
+            Ws_matched.append(W[:, result[i].values.tolist()])
+        Ws_matched = np.array(Ws_matched)
+        W = np.mean(Ws_matched, axis=0)
+        W = normalize(W, norm='l1', axis=0)
+        H = nnls(X, W)
+        # Distance matrix and cluster membership
+        sigs = np.concatenate(Ws_matched, axis=1)
+        sigs = normalize(sigs, norm='l1', axis=0)
+        d = sp.spatial.distance.pdist(sigs.T, metric='cosine')
+        d = d.clip(0)
+        d_square_form = sp.spatial.distance.squareform(d)
+        cluster_membership = np.tile(np.arange(1, n_components + 1), len(Ws))
+        # Calculate sil_score
+        samplewise_sil_score = silhouette_samples(d_square_form, cluster_membership, metric='precomputed')
+        sil_score = []
+        for i in range(0, n_components):
+            sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
+        sil_score = np.array(sil_score)
+        sil_score_mean = np.mean(samplewise_sil_score)
+        return W, H, sil_score, sil_score_mean, len(Ws)
     else:
-        raise ValueError('Only method = hierarchical is implemented for _gather_results().')
+        raise ValueError('Invalid method for _gather_results().')
+
+
+def _select_n_components(n_components_all, samplewise_reconstruction_errors_all, sil_score_all,
+                         pthresh=0.05, sil_score_mean_thresh=0.8, sil_score_min_thresh=0.2,
+                         method='algorithm1'):
+    """Select the best n_components based on reconstruction error and stability.
+
+    Parameters
+    ----------
+    n_components_all: array-like
+        All n_components tested.
+
+    samplewise_reconstruction_errors_all : dict
+        Dictionary of samplewise reconstruction errors.
+
+    sil_score_all : dict
+        Dictionary of signature-wise silhouette scores.
+
+    pthresh : float
+        Threshold for p-value.
+
+    sil_score_mean_thresh : float
+        Minimum required mean sil score for a solution to be considered stable.
+
+    sil_score_min_thresh : float
+        Minimum required min sil score for a solution to be considered stable.
+
+    method : str, 'algorithm1' | 'algorithm1.1' | 'algorithm2' | 'algorithm2.1'
+        Cf: selecting_n_components.pdf
+
+    TODO
+    ----------
+    1. Implement the method in SigProfilerExtractor.
+    """
+    n_components_all = np.sort(n_components_all)
+    ##### Stable solutions:
+    n_components_stable = []
+    for n_components in n_components_all:
+        if np.mean(sil_score_all[n_components]) >= sil_score_mean_thresh and np.min(sil_score_all[n_components]) >= sil_score_min_thresh:
+            n_components_stable.append(n_components)
+    n_components_stable = np.array(n_components_stable)
+
+    ##### If only 1 n_components value provided.
+    if len(n_components_all) == 1:
+        warnings.warn('Only 1 n_components value is tested. Selecting this n_components value.',
+                      UserWarning)
+        return n_components_all[0], n_components_stable, np.array([])
+
+    ##### Calculate p-values:
+    pvalue_all = np.array([
+        stats.mannwhitneyu(samplewise_reconstruction_errors_all[n_components],
+                           samplewise_reconstruction_errors_all[n_components + 1],
+                           alternative='greater')[1] for n_components in n_components_all[0:-1]
+    ])
+
+    ##### Select n_components
+    if method == 'algorithm1' or method == 'algorithm1.1':
+        n_components_significant = []
+        for p, n_components in zip(pvalue_all, n_components_all[1:]):
+            if p <= pthresh:
+                n_components_significant.append(n_components)
+        n_components_significant = np.array(n_components_significant)
+        if len(n_components_stable) == 0 and len(n_components_significant) == 0:
+            warnings.warn('No n_components values with stable solutions are found and '
+                          'no n_components values with significant p-values are found. '
+                          'Selecting the smallest n_components tested.',
+                          UserWarning)
+            n_components_selected = n_components_all[0]
+        elif len(n_components_significant) == 0:
+            warnings.warn('No n_components values with significant p-values are found. '
+                          'Selecting the smallest n_components with stable solutions.',
+                          UserWarning)
+            n_components_selected = n_components_stable[0]
+        elif len(n_components_stable) == 0:
+            warnings.warn('No n_components values with stable solutions are found. '
+                          'Selecting the greatest n_components with significant p-values.',
+                          UserWarning)
+            n_components_selected = n_components_significant[-1]
+        else:
+            n_components_intersect = np.array(list(set(n_components_significant).intersection(n_components_stable)))
+            if len(n_components_intersect) == 0:
+                if method == 'algorithm1':
+                    warnings.warn('Intersection of stable and significant n_components is empty. '
+                                  'Selecting the greatest n_components with significant p-values.',
+                                  UserWarning)
+                    n_components_selected = n_components_significant[-1]
+                elif method == 'algorithm1.1':
+                    warnings.warn('Intersection of stable and significant n_components is empty. '
+                                  'Selecting the smallest n_components with stable solutions.',
+                                  UserWarning)
+                    n_components_selected = n_components_stable[0]
+            else:
+                n_components_selected = np.max(n_components_intersect)
+    elif method == 'algorithm2' or method == 'algorithm2.1':
+        n_components_nonsignificant = []
+        for p, n_components in zip(pvalue_all, n_components_all[0:-1]):
+            if p > pthresh:
+                n_components_nonsignificant.append(n_components)
+        n_components_nonsignificant = np.array(n_components_nonsignificant)
+        if len(n_components_stable) == 0 and len(n_components_nonsignificant) == 0:
+            warnings.warn('No n_components values with stable solutions are found and '
+                          'no n_components values with nonsignificant p-values are found. '
+                          'Selecting the greatest n_components tested.',
+                          UserWarning)
+            n_components_selected = n_components_all[-1]
+        elif len(n_components_nonsignificant) == 0:
+            warnings.warn('No n_components values with nonsignificant p-values are found. '
+                          'Selecting the greatest n_components with stable solutions.',
+                          UserWarning)
+            n_components_selected = n_components_stable[-1]
+        elif len(n_components_stable) == 0:
+            warnings.warn('No n_components values with stable solutions are found. '
+                          'Selecting the smallest n_components with nonsignificant p-values.',
+                          UserWarning)
+            n_components_selected = n_components_nonsignificant[0]
+        else:
+            n_components_intersect = np.array(list(set(n_components_nonsignificant).intersection(n_components_stable)))
+            if len(n_components_intersect) == 0:
+                if method == 'algorithm2':
+                    warnings.warn('Intersection of stable and nonsignificant n_components is empty. '
+                                  'Selecting the smallest n_components with nonsignificant p-values.',
+                                  UserWarning)
+                    n_components_selected = n_components_nonsignificant[0]
+                elif method == 'algorithm2.1':
+                    warnings.warn('Intersection of stable and nonsignificant n_components is empty. '
+                                  'Selecting the greatest n_components with stable solutions.',
+                                  UserWarning)
+                    n_components_selected = n_components_stable[-1]
+            else:
+                n_components_selected = np.min(n_components_intersect)
+    else:
+        raise ValueError('Invalid method for _select_n_components.')
+
+    return n_components_selected, n_components_stable, pvalue_all
+
 
 
 class DenovoSig:
@@ -102,6 +389,7 @@ class DenovoSig:
                  max_n_components=None,
                  init='random',
                  method='nmf',
+                 normalize_X=False, # whether or not to normalize the input matrix for NMF/mvNMF
                  bootstrap=True,
                  n_replicates=100,
                  max_iter=1000000,
@@ -146,6 +434,7 @@ class DenovoSig:
         self.n_components_all = np.arange(self.min_n_components, self.max_n_components + 1)
         self.init = init
         self.method = method
+        self.normalize_X = normalize_X
         self.bootstrap = bootstrap
         self.n_replicates = n_replicates
         self.max_iter = max_iter
@@ -190,6 +479,8 @@ class DenovoSig:
                 X_in = bootstrap_count_matrix(self.X)
             else:
                 X_in = self.X
+            if self.normalize_X:
+                X_in = normalize(X_in, norm='l1', axis=0)
             model = NMF(X_in,
                         n_components,
                         init=self.init,
@@ -209,6 +500,8 @@ class DenovoSig:
                     X_in = bootstrap_count_matrix(self.X)
                 else:
                     X_in = self.X
+                if self.normalize_X:
+                    X_in = normalize(X_in, norm='l1', axis=0)
                 model = wrappedMVNMF(X_in,
                                      n_components,
                                      init=self.init,
@@ -233,6 +526,8 @@ class DenovoSig:
                     X_in = bootstrap_count_matrix(self.X)
                 else:
                     X_in = self.X
+                if self.normalize_X:
+                    X_in = normalize(X_in, norm='l1', axis=0)
                 model = MVNMF(X_in,
                               n_components,
                               init=self.init,
@@ -254,6 +549,8 @@ class DenovoSig:
                     X_in = bootstrap_count_matrix(self.X)
                 else:
                     X_in = self.X
+                if self.normalize_X:
+                    X_in = normalize(X_in, norm='l1', axis=0)
                 model = MVNMF(X_in,
                               n_components,
                               init=self.init,
@@ -313,6 +610,8 @@ class DenovoSig:
                         X_in = bootstrap_count_matrix(self.X)
                     else:
                         X_in = self.X
+                    if self.normalize_X:
+                        X_in = normalize(X_in, norm='l1', axis=0)
                     model = wrappedMVNMF(X_in,
                                          n_components,
                                          init=self.init,
@@ -379,71 +678,15 @@ class DenovoSig:
         self.samplewise_reconstruction_errors_all = {
             n_components: _samplewise_error(self.X, self.W_all[n_components] @ self.H_all[n_components]) for n_components in self.n_components_all
         }
-        # If there is only 1 n_components tested, return its result
-        if len(self.n_components_all) == 1:
-            warnings.warn('Only 1 n_components value is tested.',
-                          UserWarning)
-            self.n_components = self.n_components_all[0]
-            self.n_components_old = self.n_components
-            if np.mean(self.sil_score_all[self.n_components]) >= 0.8 and np.min(self.sil_score_all[self.n_components]) >= 0.2:
-                self.min_n_components_stable = self.n_components
-                self.max_n_components_stable = self.n_components
-            else:
-                self.min_n_components_stable = None
-                self.max_n_components_stable = None
-            self.pvalue_all = None
-            self.pvalue_all_n_components = None
-        # If there are more than 1 n_components tested:
-        else:
-            # First get stable n_components
-            candidates = []
-            for n_components in self.n_components_all:
-                if np.mean(self.sil_score_all[n_components]) >= 0.8 and np.min(self.sil_score_all[n_components]) >= 0.2:
-                    candidates.append(n_components)
-            candidates = np.array(candidates)
-            # If there is only 1 stable n_components, we take it:
-            if len(candidates) == 1:
-                warnings.warn('Only 1 n_components value with stable solutions is found.',
-                              UserWarning)
-                self.n_components = candidates[0]
-                self.n_components_old = self.n_components
-                self.min_n_components_stable = self.n_components
-                self.max_n_components_stable = self.n_components
-                self.pvalue_all = None
-                self.pvalue_all_n_components = None
-            else:
-                # If there are no stable n_components, we do p-value tests for all n_components
-                if len(candidates) == 0:
-                    self.min_n_components_stable = None
-                    self.max_n_components_stable = None
-                    warnings.warn('No n_components values with stable solutions are found.',
-                                  UserWarning)
-                    self.pvalue_all_n_components = self.n_components_all
-                else:
-                    self.min_n_components_stable = np.min(candidates)
-                    self.max_n_components_stable = np.max(candidates)
-                    self.pvalue_all_n_components = np.arange(self.min_n_components_stable, self.max_n_components_stable + 1)
-                self.pvalue_all = np.array([
-                    stats.mannwhitneyu(self.samplewise_reconstruction_errors_all[n_components],
-                                       self.samplewise_reconstruction_errors_all[n_components + 1],
-                                       alternative='greater')[1] for n_components in self.pvalue_all_n_components[0:-1]
-                ])
-                # Old selection
-                if np.max(self.pvalue_all) <= self.pthresh:
-                    warnings.warn('All p-values are smaller than or equal to pthresh. Enlarge search space for n_components.',
-                                  UserWarning)
-                    index_selected_old = len(self.pvalue_all_n_components) - 1
-                else:
-                    index_selected_old = np.argmax(self.pvalue_all > self.pthresh)
-                self.n_components_old = self.pvalue_all_n_components[index_selected_old]
-                # New selection
-                if np.min(self.pvalue_all) > self.pthresh:
-                    warnings.warn('All p-values are greater than pthresh. Enlarge search space for n_components.',
-                                  UserWarning)
-                    index_selected = 0
-                else:
-                    index_selected = np.flatnonzero(self.pvalue_all <= self.pthresh)[-1] + 1
-                self.n_components = self.pvalue_all_n_components[index_selected]
+        self.n_components, self.n_components_stable, self.pvalue_all = _select_n_components(
+            self.n_components_all,
+            self.samplewise_reconstruction_errors_all,
+            self.sil_score_all,
+            pthresh=self.pthresh,
+            sil_score_mean_thresh=0.8,
+            sil_score_min_thresh=0.2,
+            method='algorithm1'
+        )
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
         self.sil_score = self.sil_score_all[self.n_components]

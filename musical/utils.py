@@ -6,6 +6,7 @@ from sklearn.metrics import pairwise_distances
 from scipy.optimize import linear_sum_assignment
 import itertools
 import scipy as sp
+import scipy.stats as stats
 from operator import itemgetter
 
 ##################
@@ -178,7 +179,7 @@ def bootstrap_count_matrix(X):
     X_bootstrapped = []
     for x in X.T:
         N = int(round(np.sum(x)))
-        indices = np.random.choice(n_features, size=N, replace=True, p=x/N)
+        indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
         X_bootstrapped.append([np.sum(indices == i)
                                for i in range(0, n_features)])
     X_bootstrapped = np.array(X_bootstrapped).T
@@ -260,7 +261,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     data = []
     for item in combs:
         x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
-        if np.amin(x) < min_contribution:
+        if np.min(x) < min_contribution:
             continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
@@ -285,7 +286,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     data = []
     for item in combs:
         x, resid = sp.optimize.nnls(W_catalog[:, list(item)], w)
-        if np.amin(x) < min_contribution: 
+        if np.min(x) < min_contribution:
             continue
         data.append([item, x, resid])
     data = sorted(data, key=itemgetter(2))
@@ -293,13 +294,13 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
         match = data[0][0]
         coef = data[0][1]
         cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
-        return match, cos, coef    
-    return -1,-1,-1
+        return match, cos, coef
+    return (), np.nan, None
 
 def tag_similar_signatures(W, metric = 'cosine'):
     pdist = pairwise_distances(W.T, metric = metric)
     n_signatures = W.shape[1]
-    similar_signatures = []    
+    similar_signatures = []
     for i in  range(0, n_signatures):
         inds = np.where(pdist[i, :] < 0.05)
         similar_signatures[i] = inds
@@ -307,3 +308,35 @@ def tag_similar_signatures(W, metric = 'cosine'):
 
 def save_signature_exposure_tables(model):
     model.W
+
+
+def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
+    """Test if distribution tails are different (pubmed: 18655712)
+
+    Parameters
+    ----------
+    a, b : array-like
+        a, b must be positive.
+
+    percentile : float
+        Percentile threshold above which data points are considered tails.
+
+    alternative : {'two-sided', 'less', 'greater'}
+        Defines the alternative hypothesis. For example, when set to 'greater',
+        the alternative hypothesis is that the tail of a is greater than the tail
+        of b.
+    """
+    a = np.array(a)
+    b = np.array(b)
+    comb = np.concatenate([a, b])
+    thresh = np.percentile(comb, percentile)
+    za = a * (a > thresh)
+    zb = b * (b > thresh)
+    # If za and zb contain identical values, e.g., both za and zb are all zeros.
+    if (np.sort(za) == np.sort(zb)).all():
+        if alternative == 'two-sided':
+            return np.nan, 1.0
+        else:
+            return np.nan, 0.5
+    statistic, pvalue = stats.mannwhitneyu(za, zb, alternative=alternative)
+    return statistic, pvalue
