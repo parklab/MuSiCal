@@ -58,6 +58,9 @@ def remove_samples_based_on_gini(H, X, gini_baseline = 0.65, gini_delta = 0.005,
         return(X_this)
 
 def remove_distinct_cluster(H, X, frac_thresh = 0.05):
+    if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
+            X = np.array(X).astype(float)
+
     for h, i in zip(H, range(0, H.shape[1])):
         h_norm = h/np.sum(X, axis = 0)
         h_norm[h_norm < frac_thresh] = 0
@@ -125,7 +128,7 @@ def remove_distinct_cluster(H, X, frac_thresh = 0.05):
     if np.logical_or(mean_fraction_clust1_sigs_in_clust2 > 0.05, mean_fraction_clust1_sigs_in_clust1 > 0.05):
         X_run_separate[ind] = X
         ind = ind + 1
-    elif np.logical_and(mean_fraction_both_clust1 > 0.05, mean_fraction_both_clust2 > 0.05):
+    elif np.logical_and(mean_fraction_both_in_clust1 > 0.05, mean_fraction_both_in_clust2 > 0.05):
         X_run_separate[ind] = X
         ind = ind + 1
   
