@@ -116,7 +116,8 @@ class OptimalK:
         TODO:
         ----------
         1. Implement method='b'.
-        2. We can also implement a method where we simply simulate
+        2. We can also implement a method where we simply simulate each feature as a uniform distribution between 0 and 1,
+            or use some Dirichlet distribution based simulation. 
         """
         if method == 'a':
             a = np.min(self.X, axis=1, keepdims=True)
