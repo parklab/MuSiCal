@@ -175,12 +175,14 @@ class OptimalK:
         ### Selecting optimal k
         # Using Wk
         candidates = self.ks[1:][(self.gap_statistic[1:] - self.Wk_ref_sd[1:] - self.gap_statistic[0:-1]) <= 0]
+        self.k_gap_statistic_valid = candidates - 1
         if len(candidates) == 0:
             self.k_gap_statistic = np.nan
         else:
             self.k_gap_statistic = candidates[0] - 1
         # Using Wk_log
         candidates = self.ks[1:][(self.gap_statistic_log[1:] - self.Wk_log_ref_sd[1:] - self.gap_statistic_log[0:-1]) <= 0]
+        self.k_gap_statistic_log_valid = candidates - 1
         if len(candidates) == 0:
             self.k_gap_statistic_log = np.nan
         else:
@@ -189,6 +191,7 @@ class OptimalK:
         self.k_silscore = self.ks[1:][np.argmax(self.silscorek[1:])]
         # Default
         self.k = self.k_gap_statistic
+        self.k_valid = self.k_gap_statistic_valid
         ### Summary
         self.summary = pd.DataFrame({
             'k': self.ks,
@@ -196,12 +199,16 @@ class OptimalK:
             'gap_log': self.gap_statistic_log,
             'sk': self.Wk_ref_sd,
             'sk_log': self.Wk_log_ref_sd,
+            'diff': list(self.gap_statistic[0:-1] - self.gap_statistic[1:] + self.Wk_ref_sd[1:]) + [np.nan],
+            'diff_log': list(self.gap_statistic_log[0:-1] - self.gap_statistic_log[1:] + self.Wk_log_ref_sd[1:]) + [np.nan],
             'sil_score': self.silscorek,
             'sil_score_ref': self.silscorek_ref,
             'sil_score_ref_std': self.silscorek_ref_sd,
             'k_optimal_gap': (self.ks == self.k_gap_statistic),
             'k_optimal_gap_log': (self.ks == self.k_gap_statistic_log),
-            'k_optimal_silscore': (self.ks == self.k_silscore)
+            'k_optimal_silscore': (self.ks == self.k_silscore),
+            'k_valid_gap': [k in self.k_gap_statistic_valid for k in self.ks],
+            'k_valid_gap_log': [k in self.k_gap_statistic_log_valid for k in self.ks]
         })
         self.summary = self.summary.set_index('k')
         ### Finally cluster according to the optimal k
@@ -230,6 +237,8 @@ class OptimalK:
         subfig.set_ylabel("Gap statistic", fontsize=14)
         subfig.errorbar(self.summary.index, self.summary['gap'], yerr=self.summary['sk'],
                         fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0])
+        subfig.plot(self.summary[self.summary['k_valid_gap']].index, self.summary[self.summary['k_valid_gap']]['gap'],
+                    '.', markersize=15, color=colorPaletteMathematica97[2])
         subfig.axvspan(self.k_gap_statistic - 0.25, self.k_gap_statistic + 0.25, color='grey', alpha=0.3)
         plt.xticks(self.summary.index)
         plt.xlim(0, self.max_k + 1)
@@ -248,6 +257,8 @@ class OptimalK:
         subfig.set_ylabel("Gap statistic (log)", fontsize=14)
         subfig.errorbar(self.summary.index, self.summary['gap_log'], yerr=self.summary['sk_log'],
                         fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0])
+        subfig.plot(self.summary[self.summary['k_valid_gap_log']].index, self.summary[self.summary['k_valid_gap_log']]['gap_log'],
+                    '.', markersize=15, color=colorPaletteMathematica97[2])
         subfig.axvspan(self.k_gap_statistic_log - 0.25, self.k_gap_statistic_log + 0.25, color='grey', alpha=0.3)
         plt.xticks(self.summary.index)
         plt.xlim(0, self.max_k + 1)

@@ -164,9 +164,9 @@ def stratify_samples(X, H=None,
         Contains information about the clustering. For example, use optimalK.plot() to visualize the selection curves.
     """
     if H is None:
-        data = X
+        data = normalize(X, norm='l1', axis=0)
     else:
-        data = H
+        data = normalize(H, norm='l1', axis=0)
     n_samples = data.shape[1]
     # Clustering with automatic selection of cluster number
     optimalK = OptimalK(data, max_k=max_k, nrefs=nrefs, metric=metric, linkage_method=linkage_method)
