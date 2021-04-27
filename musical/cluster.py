@@ -1,0 +1,277 @@
+"""Clustering related functions"""
+
+import numpy as np
+import scipy as sp
+import scipy.cluster.hierarchy as sch
+from sklearn.preprocessing import normalize
+from sklearn.metrics import silhouette_samples
+import scipy.stats as stats
+import warnings
+import pandas as pd
+from operator import itemgetter
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.ticker as ticker
+
+from .plot import colorPaletteMathematica97
+
+
+def _within_cluster_variation(d_square_form, cluster_membership):
+    """Within cluster variation.
+
+    Cf. https://statweb.stanford.edu/~gwalther/gap
+        (Estimating the number of clusters in a data set via the gap statistic by Tibshirani et al.)
+
+    Parameters:
+    ----------
+    d_square_form : array-like
+        Squared form pairwise distance matrix.
+
+    cluster_membership : array-like
+        Cluster membership.
+    """
+    cluster_indices = sorted(list(set(cluster_membership)))
+    Ds = []
+    for i in cluster_indices:
+        index = (cluster_membership == i)
+        d_sub = d_square_form[np.ix_(index, index)]
+        Ds.append(np.sum(d_sub)/2/d_sub.shape[0]) # D_r / (2 n_r)
+    W = np.sum(Ds)
+    return W
+
+
+def hierarchical_cluster(X, k, metric='cosine', linkage_method='average'):
+    """Hierarchical clustering.
+
+    Parameters:
+    ----------
+    X : array-like of shape (n_features, n_samples)
+        Input data matrix. Note that this is in the transposed shape of what
+        scipy or sklearn normally requires, but is convenient for signature analysis.
+
+    k : int
+        Number of clusters
+
+    metric : str
+        Metric
+
+    linkage_method : str
+        Linkage method
+    """
+    d = sp.spatial.distance.pdist(X.T, metric=metric)
+    d = d.clip(0)
+    d_square_form = sp.spatial.distance.squareform(d)
+    linkage = sch.linkage(d, method=linkage_method)
+    cluster_membership = sch.fcluster(linkage, k, criterion="maxclust")
+    return d_square_form, cluster_membership
+
+
+class OptimalK:
+    """Automatically select the optimal number of clusters for hierarchical clustering
+
+    We use the gap statistic method (without log). References:
+    1. See https://www.stat.cmu.edu/~ryantibs/datamining/lectures/06-clus3.pdf for a general introduction.
+    2. See https://statweb.stanford.edu/~gwalther/gap for the original paper proposing the gap statistic.
+        (Estimating the number of clusters in a data set via the gap statistic by Tibshirani et al.)
+    3. See https://core.ac.uk/download/pdf/12172514.pdf for a proposal of removing log in the gap statistic.
+        (A comparison of Gap statistic definitions with and with-out logarithm function by Mohajer et al.)
+    4. See https://github.com/milesgranger/gap_statistic for a python implementation. They didn't use the original
+        definition of Wk as in the Tibshirani paper. They used the definition where centroids are used. For squared
+        Euclidean distances, the two definitions are equivalent. But for other metrics such as cosine, they are not.
+    We also generate silhouette score based selection. Note that silhouette score is not defined for k = 1.
+
+    TODO:
+    ----------
+    1. Make it more general to work with any clustering method, as in, e.g., https://github.com/milesgranger/gap_statistic.
+    """
+    def __init__(self,
+                 X,
+                 max_k=20,
+                 nrefs=50,
+                 metric='cosine',
+                 linkage_method='average'
+                ):
+        self.X = X
+        self.n_features, self.n_samples = X.shape
+        self.nrefs = nrefs
+        if max_k > self.n_samples:
+            max_k = self.n_samples
+        self.max_k = max_k
+        self.ks = np.arange(1, self.max_k + 1)
+        self.metric = metric
+        self.linkage_method = linkage_method
+        self.select()
+
+    def _simulate_reference_data(self, method='a'):
+        """Simulate reference data according to Tibshirani et al.
+
+        Parameters:
+        ----------
+        method : str, 'a' | 'b'
+            Method for simulating the reference data. Methods a and b correspond to those described in
+            Tibshirani et al.
+
+        TODO:
+        ----------
+        1. Implement method='b'.
+        2. We can also implement a method where we simply simulate
+        """
+        if method == 'a':
+            a = np.min(self.X, axis=1, keepdims=True)
+            b = np.max(self.X, axis=1, keepdims=True)
+            self.reference_data = [np.random.random_sample(size=(self.n_features, self.n_samples)) * (b - a) + a for i in range(0, self.nrefs)]
+            return self.reference_data
+        else:
+            raise ValueError('Method for _simulate_reference_data can only be a currently.')
+
+    @staticmethod
+    def _cluster_statistic(X, max_k, metric='cosine', linkage_method='average'):
+        d = sp.spatial.distance.pdist(X.T, metric=metric)
+        d = d.clip(0)
+        d_square_form = sp.spatial.distance.squareform(d)
+        linkage = sch.linkage(d, method=linkage_method)
+        Wk = []
+        silscorek = []
+        for k in range(1, max_k + 1):
+            cluster_membership = sch.fcluster(linkage, k, criterion="maxclust")
+            Wk.append(_within_cluster_variation(d_square_form, cluster_membership))
+            if k == 1:
+                silscorek.append(np.nan)
+            else:
+                silscorek.append(np.mean(silhouette_samples(d_square_form, cluster_membership, metric='precomputed')))
+        Wk = np.array(Wk)
+        silscorek = np.array(silscorek)
+        return Wk, silscorek
+
+    def select(self):
+        ### First calculate statistics for data itself
+        self.Wk, self.silscorek = self._cluster_statistic(self.X, self.max_k, metric=self.metric, linkage_method=self.linkage_method)
+        self.Wk_log = np.log(self.Wk)
+        ### Then calculate statistics for reference data
+        # simulate
+        self._simulate_reference_data(method='a')
+        # calculate
+        self.Wk_ref_all = []
+        self.silscorek_ref_all = []
+        for data in self.reference_data:
+            Wk, silscorek = self._cluster_statistic(data, self.max_k, metric=self.metric, linkage_method=self.linkage_method)
+            self.Wk_ref_all.append(Wk)
+            self.silscorek_ref_all.append(silscorek)
+        self.Wk_ref_all = np.array(self.Wk_ref_all)
+        self.Wk_log_ref_all = np.log(self.Wk_ref_all)
+        self.silscorek_ref_all = np.array(self.silscorek_ref_all)
+        # aggregate statistics
+        self.Wk_ref = np.mean(self.Wk_ref_all, axis=0)
+        self.Wk_log_ref = np.mean(self.Wk_log_ref_all, axis=0)
+        self.silscorek_ref = np.mean(self.silscorek_ref_all, axis=0)
+        self.Wk_ref_sd = np.std(self.Wk_ref_all, axis=0) * np.sqrt(1 + 1/self.nrefs)
+        self.silscorek_ref_sd = np.std(self.silscorek_ref_all, axis=0) * np.sqrt(1 + 1/self.nrefs)
+        self.Wk_log_ref_sd = np.std(self.Wk_log_ref_all, axis=0) * np.sqrt(1 + 1/self.nrefs)
+        ### Calculate gap statistics
+        self.gap_statistic = self.Wk_ref - self.Wk
+        self.gap_statistic_log = self.Wk_log_ref - self.Wk_log
+        ### Selecting optimal k
+        # Using Wk
+        candidates = self.ks[1:][(self.gap_statistic[1:] - self.Wk_ref_sd[1:] - self.gap_statistic[0:-1]) <= 0]
+        if len(candidates) == 0:
+            self.k_gap_statistic = np.nan
+        else:
+            self.k_gap_statistic = candidates[0] - 1
+        # Using Wk_log
+        candidates = self.ks[1:][(self.gap_statistic_log[1:] - self.Wk_log_ref_sd[1:] - self.gap_statistic_log[0:-1]) <= 0]
+        if len(candidates) == 0:
+            self.k_gap_statistic_log = np.nan
+        else:
+            self.k_gap_statistic_log = candidates[0] - 1
+        # Using sil score
+        self.k_silscore = self.ks[1:][np.argmax(self.silscorek[1:])]
+        # Default
+        self.k = self.k_gap_statistic
+        ### Summary
+        self.summary = pd.DataFrame({
+            'k': self.ks,
+            'gap': self.gap_statistic,
+            'gap_log': self.gap_statistic_log,
+            'sk': self.Wk_ref_sd,
+            'sk_log': self.Wk_log_ref_sd,
+            'sil_score': self.silscorek,
+            'sil_score_ref': self.silscorek_ref,
+            'sil_score_ref_std': self.silscorek_ref_sd,
+            'k_optimal_gap': (self.ks == self.k_gap_statistic),
+            'k_optimal_gap_log': (self.ks == self.k_gap_statistic_log),
+            'k_optimal_silscore': (self.ks == self.k_silscore)
+        })
+        self.summary = self.summary.set_index('k')
+        ### Finally cluster according to the optimal k
+        _, self.cluster_membership = hierarchical_cluster(self.X, self.k, metric=self.metric, linkage_method=self.linkage_method)
+
+    def plot(self, outfile=None):
+        mpl.rcParams['pdf.fonttype'] = 42
+        fig = plt.figure()
+        fig.set_size_inches(10, 10)
+        sns.set_context("notebook")
+        sns.set_style("ticks")
+        plt.rc('xtick', labelsize=14)
+        plt.rc('ytick', labelsize=14)
+
+        subfig = fig.add_subplot(3, 1, 1)
+        subfig.set_title("Selection using gap statistic", fontsize=14)
+        subfig.spines['right'].set_visible(False)
+        subfig.spines['top'].set_visible(False)
+        subfig.spines['bottom'].set_color('k')
+        subfig.spines['left'].set_color('k')
+        for tick in subfig.get_xticklabels():
+            tick.set_fontname("Arial")
+        for tick in subfig.get_yticklabels():
+            tick.set_fontname("Arial")
+        subfig.set_xlabel("Number of clusters", fontsize=14)
+        subfig.set_ylabel("Gap statistic", fontsize=14)
+        subfig.errorbar(self.summary.index, self.summary['gap'], yerr=self.summary['sk'],
+                        fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0])
+        subfig.axvspan(self.k_gap_statistic - 0.25, self.k_gap_statistic + 0.25, color='grey', alpha=0.3)
+        plt.xticks(self.summary.index)
+        plt.xlim(0, self.max_k + 1)
+
+        subfig = fig.add_subplot(3, 1, 2)
+        subfig.set_title("Selection using gap statistic (log)", fontsize=14)
+        subfig.spines['right'].set_visible(False)
+        subfig.spines['top'].set_visible(False)
+        subfig.spines['bottom'].set_color('k')
+        subfig.spines['left'].set_color('k')
+        for tick in subfig.get_xticklabels():
+            tick.set_fontname("Arial")
+        for tick in subfig.get_yticklabels():
+            tick.set_fontname("Arial")
+        subfig.set_xlabel("Number of clusters", fontsize=14)
+        subfig.set_ylabel("Gap statistic (log)", fontsize=14)
+        subfig.errorbar(self.summary.index, self.summary['gap_log'], yerr=self.summary['sk_log'],
+                        fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0])
+        subfig.axvspan(self.k_gap_statistic_log - 0.25, self.k_gap_statistic_log + 0.25, color='grey', alpha=0.3)
+        plt.xticks(self.summary.index)
+        plt.xlim(0, self.max_k + 1)
+
+        subfig = fig.add_subplot(3, 1, 3)
+        subfig.set_title("Selection using silhouette score", fontsize=14)
+        subfig.spines['right'].set_visible(False)
+        subfig.spines['top'].set_visible(False)
+        subfig.spines['bottom'].set_color('k')
+        subfig.spines['left'].set_color('k')
+        for tick in subfig.get_xticklabels():
+            tick.set_fontname("Arial")
+        for tick in subfig.get_yticklabels():
+            tick.set_fontname("Arial")
+        subfig.set_xlabel("Number of clusters", fontsize=14)
+        subfig.set_ylabel("Silhouette score", fontsize=14)
+        subfig.plot(self.summary.index, self.summary['sil_score'], '.--', markersize=10, label='Data', color=colorPaletteMathematica97[0])
+        subfig.errorbar(self.summary.index, self.summary['sil_score_ref'], yerr=self.summary['sil_score_ref_std'],
+                        fmt='--', markersize=10, capsize=3, capthick=2, label='Reference data', color=colorPaletteMathematica97[1])
+        subfig.axvspan(self.k_silscore - 0.25, self.k_silscore + 0.25, color='grey', alpha=0.3)
+        plt.legend(prop={'size': 14})
+        plt.xticks(self.summary.index)
+        plt.xlim(0, self.max_k + 1)
+        plt.tight_layout()
+
+        if outfile is not None:
+            plt.savefig(outfile, bbox_inches='tight')

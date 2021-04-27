@@ -1,11 +1,10 @@
 import numpy as np
-
-
-import numpy as np
 import scipy as sp
 import scipy.cluster.hierarchy as sch
 from sklearn.preprocessing import normalize
 import scipy.stats as stats
+
+from .cluster import OptimalK
 
 
 def gini(x):
@@ -38,7 +37,7 @@ def remove_samples_based_on_gini(H, X, gini_baseline = 0.65, gini_delta = 0.005,
             gini_bef = gini(np.sort(h_norm)[1:(index - 1)])
             delta = gini_this - gini_bef
             index = index - 1
-            if index < np.around(h_norm.size * 0.8): 
+            if index < np.around(h_norm.size * 0.8):
                 break
         to_keep = np.where(h_norm < np.sort(h_norm)[index])
         to_remove = np.where(h_norm >= np.sort(h_norm)[index])
@@ -104,7 +103,7 @@ def remove_distinct_cluster(H, X, frac_thresh = 0.05):
     mean_fraction_both_in_clust1 = 0
     mean_fraction_both_in_clust2 = 0
 
-    if sum(indices_clust1) > 0: 
+    if sum(indices_clust1) > 0:
         mean_fraction_clust1_sigs_in_clust1 = np.mean(np.sum(H[np.where(indices_clust1),:], axis = 1)[:,np.where(cluster_membership == 1)])
         mean_fraction_clust1_sigs_in_clust2 = np.mean(np.sum(H[np.where(indices_clust1),:], axis = 1)[:,np.where(cluster_membership == 2)])
     if sum(indices_clust2) > 0:
@@ -121,15 +120,63 @@ def remove_distinct_cluster(H, X, frac_thresh = 0.05):
         X_run_separate[ind] = X[:, cluster_membership == 2]
         ind = ind + 1
 
-    if np.logical_and(mean_fraction_clust2_sigs_in_clust1 < 0.05, mean_fraction_clust2_sigs_in_clust2 > 0.3): 
+    if np.logical_and(mean_fraction_clust2_sigs_in_clust1 < 0.05, mean_fraction_clust2_sigs_in_clust2 > 0.3):
         X_run_separate[ind] = X[:, cluster_membership == 1]
         ind = ind + 1
-  
+
     if np.logical_or(mean_fraction_clust1_sigs_in_clust2 > 0.05, mean_fraction_clust1_sigs_in_clust1 > 0.05):
         X_run_separate[ind] = X
         ind = ind + 1
     elif np.logical_and(mean_fraction_both_in_clust1 > 0.05, mean_fraction_both_in_clust2 > 0.05):
         X_run_separate[ind] = X
         ind = ind + 1
-  
+
     return(X_run_separate)
+
+
+def stratify_samples(X, H=None,
+                     max_k=20, nrefs=50, metric='cosine', linkage_method='average'):
+    """Stratify samples by clustering with automatic selection of cluster number.
+
+    If H is provided, H will be used for clustering. Otherwise, X will be used.
+
+    Parameters:
+    ----------
+    X : array-like of shape (n_features, n_samples)
+        Input data matrix.
+
+    H : array-like of shape (n_components, n_samples)
+        Optional exposure matrix.
+
+    Returns:
+    ----------
+    k : int
+        The optimal number of clusters. If k == 1, then no stratification is done.
+
+    clusters : list of numpy arrays
+        The indices of samples in distinct clusters. For example, the exposures of distinct clusters
+        can be obtained by [H[:, indices] for indices in clusters]
+
+    Xs : list of numpy arrays
+        Samples in distinct clusters.
+
+    optimalK : object of OptimalK class
+        Contains information about the clustering. For example, use optimalK.plot() to visualize the selection curves.
+    """
+    if H is None:
+        data = X
+    else:
+        data = H
+    n_samples = data.shape[1]
+    # Clustering with automatic selection of cluster number
+    optimalK = OptimalK(data, max_k=max_k, nrefs=nrefs, metric=metric, linkage_method=linkage_method)
+    # Gather results
+    k = optimalK.k # Number of clusters
+    cluster_membership = optimalK.cluster_membership
+    clusters = []
+    Xs = []
+    for i in sorted(list(set(cluster_membership))):
+        indices = np.arange(0, n_samples)[cluster_membership == i]
+        clusters.append(indices)
+        Xs.append(X[:, indices])
+    return k, clusters, Xs, optimalK
