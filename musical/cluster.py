@@ -3,7 +3,7 @@
 import numpy as np
 import scipy as sp
 import scipy.cluster.hierarchy as sch
-from sklearn.preprocessing import normalize
+from sklearn.preprocessing import normalize, scale
 from sklearn.metrics import silhouette_samples
 import scipy.stats as stats
 import warnings
@@ -91,7 +91,8 @@ class OptimalK:
                  max_k=20,
                  nrefs=50,
                  metric='cosine',
-                 linkage_method='average'
+                 linkage_method='average',
+                 ref_method='a'
                 ):
         self.X = X
         self.n_features, self.n_samples = X.shape
@@ -102,6 +103,7 @@ class OptimalK:
         self.ks = np.arange(1, self.max_k + 1)
         self.metric = metric
         self.linkage_method = linkage_method
+        self.ref_method = ref_method
         self.select()
 
     def _simulate_reference_data(self, method='a'):
@@ -117,15 +119,25 @@ class OptimalK:
         ----------
         1. Implement method='b'.
         2. We can also implement a method where we simply simulate each feature as a uniform distribution between 0 and 1,
-            or use some Dirichlet distribution based simulation. 
+            or use some Dirichlet distribution based simulation.
         """
         if method == 'a':
             a = np.min(self.X, axis=1, keepdims=True)
             b = np.max(self.X, axis=1, keepdims=True)
             self.reference_data = [np.random.random_sample(size=(self.n_features, self.n_samples)) * (b - a) + a for i in range(0, self.nrefs)]
             return self.reference_data
+        elif method == 'b':
+            X = self.X.T
+            offset = np.mean(X, 0, keepdims=True)
+            X = scale(X, with_mean=True, with_std=False) # mean-center columns
+            U, D, VT = np.linalg.svd(X)
+            X_prime = X @ VT.T
+            a = np.min(X_prime, axis=0, keepdims=True)
+            b = np.max(X_prime, axis=0, keepdims=True)
+            self.reference_data = [(((np.random.random_sample(size=X.shape) * (b - a) + a) @ VT) + offset).T for i in range(0, self.nrefs)]
+            return self.reference_data
         else:
-            raise ValueError('Method for _simulate_reference_data can only be a currently.')
+            raise ValueError('Method for _simulate_reference_data can only be a or b currently.')
 
     @staticmethod
     def _cluster_statistic(X, max_k, metric='cosine', linkage_method='average'):
@@ -152,7 +164,7 @@ class OptimalK:
         self.Wk_log = np.log(self.Wk)
         ### Then calculate statistics for reference data
         # simulate
-        self._simulate_reference_data(method='a')
+        self._simulate_reference_data(method=self.ref_method)
         # calculate
         self.Wk_ref_all = []
         self.silscorek_ref_all = []

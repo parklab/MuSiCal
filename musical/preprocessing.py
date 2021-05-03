@@ -135,7 +135,7 @@ def remove_distinct_cluster(H, X, frac_thresh = 0.05):
 
 
 def stratify_samples(X, H=None,
-                     max_k=20, nrefs=50, metric='cosine', linkage_method='average'):
+                     max_k=20, nrefs=50, metric='cosine', linkage_method='average', ref_method='a'):
     """Stratify samples by clustering with automatic selection of cluster number.
 
     If H is provided, H will be used for clustering. Otherwise, X will be used.
@@ -169,7 +169,7 @@ def stratify_samples(X, H=None,
         data = normalize(H, norm='l1', axis=0)
     n_samples = data.shape[1]
     # Clustering with automatic selection of cluster number
-    optimalK = OptimalK(data, max_k=max_k, nrefs=nrefs, metric=metric, linkage_method=linkage_method)
+    optimalK = OptimalK(data, max_k=max_k, nrefs=nrefs, metric=metric, linkage_method=linkage_method, ref_method=ref_method)
     # Gather results
     k = optimalK.k # Number of clusters
     cluster_membership = optimalK.cluster_membership
