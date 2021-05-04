@@ -147,20 +147,24 @@ class OptimalK:
         linkage = sch.linkage(d, method=linkage_method)
         Wk = []
         silscorek = []
+        silscorek_percluster = {}
         for k in range(1, max_k + 1):
             cluster_membership = sch.fcluster(linkage, k, criterion="maxclust")
             Wk.append(_within_cluster_variation(d_square_form, cluster_membership))
             if k == 1:
                 silscorek.append(np.nan)
+                silscorek_percluster[k] = np.nan
             else:
-                silscorek.append(np.mean(silhouette_samples(d_square_form, cluster_membership, metric='precomputed')))
+                silscore_per_sample = silhouette_samples(d_square_form, cluster_membership, metric='precomputed')
+                silscorek.append(np.mean(silscore_per_sample))
+                silscorek_percluster[k] = np.array([np.mean(silscore_per_sample[cluster_membership == i]) for i in range(1, k + 1)])
         Wk = np.array(Wk)
         silscorek = np.array(silscorek)
-        return Wk, silscorek
+        return Wk, silscorek, silscorek_percluster
 
     def select(self):
         ### First calculate statistics for data itself
-        self.Wk, self.silscorek = self._cluster_statistic(self.X, self.max_k, metric=self.metric, linkage_method=self.linkage_method)
+        self.Wk, self.silscorek, self.silscorek_percluster = self._cluster_statistic(self.X, self.max_k, metric=self.metric, linkage_method=self.linkage_method)
         self.Wk_log = np.log(self.Wk)
         ### Then calculate statistics for reference data
         # simulate
@@ -168,10 +172,12 @@ class OptimalK:
         # calculate
         self.Wk_ref_all = []
         self.silscorek_ref_all = []
+        self.silscorek_percluster_ref_all = []
         for data in self.reference_data:
-            Wk, silscorek = self._cluster_statistic(data, self.max_k, metric=self.metric, linkage_method=self.linkage_method)
+            Wk, silscorek, silscorek_percluster = self._cluster_statistic(data, self.max_k, metric=self.metric, linkage_method=self.linkage_method)
             self.Wk_ref_all.append(Wk)
             self.silscorek_ref_all.append(silscorek)
+            self.silscorek_percluster_ref_all.append(silscorek_percluster)
         self.Wk_ref_all = np.array(self.Wk_ref_all)
         self.Wk_log_ref_all = np.log(self.Wk_ref_all)
         self.silscorek_ref_all = np.array(self.silscorek_ref_all)
@@ -227,7 +233,7 @@ class OptimalK:
         ### Finally cluster according to the optimal k
         _, self.cluster_membership = hierarchical_cluster(self.X, self.k, metric=self.metric, linkage_method=self.linkage_method)
 
-    def plot(self, outfile=None):
+    def plot(self, sil_thresh=None, outfile=None):
         mpl.rcParams['pdf.fonttype'] = 42
         fig = plt.figure()
         fig.set_size_inches(10, 10)
@@ -249,10 +255,11 @@ class OptimalK:
         subfig.set_xlabel("Number of clusters", fontsize=14)
         subfig.set_ylabel("Gap statistic", fontsize=14)
         subfig.errorbar(self.summary.index, self.summary['gap'], yerr=self.summary['sk'],
-                        fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0])
+                        fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0], label='All k\'s', zorder=0)
         subfig.plot(self.summary[self.summary['k_valid_gap']].index, self.summary[self.summary['k_valid_gap']]['gap'],
-                    '.', markersize=15, color=colorPaletteMathematica97[2])
-        subfig.axvspan(self.k_gap_statistic - 0.25, self.k_gap_statistic + 0.25, color='grey', alpha=0.3)
+                    '.', markersize=10, color=colorPaletteMathematica97[2], label='Reasonable k\'s', zorder=1)
+        subfig.axvspan(self.k_gap_statistic - 0.25, self.k_gap_statistic + 0.25, color='grey', alpha=0.3, label='Selected k', zorder=2)
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1, prop={'size': 14})
         plt.xticks(self.summary.index)
         plt.xlim(0, self.max_k + 1)
 
@@ -269,10 +276,11 @@ class OptimalK:
         subfig.set_xlabel("Number of clusters", fontsize=14)
         subfig.set_ylabel("Gap statistic (log)", fontsize=14)
         subfig.errorbar(self.summary.index, self.summary['gap_log'], yerr=self.summary['sk_log'],
-                        fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0])
+                        fmt='.--', markersize=10, capsize=3, capthick=2, color=colorPaletteMathematica97[0], label='All k\'s', zorder=0)
         subfig.plot(self.summary[self.summary['k_valid_gap_log']].index, self.summary[self.summary['k_valid_gap_log']]['gap_log'],
-                    '.', markersize=15, color=colorPaletteMathematica97[2])
-        subfig.axvspan(self.k_gap_statistic_log - 0.25, self.k_gap_statistic_log + 0.25, color='grey', alpha=0.3)
+                    '.', markersize=10, color=colorPaletteMathematica97[2], label='Reasonable k\'s', zorder=1)
+        subfig.axvspan(self.k_gap_statistic_log - 0.25, self.k_gap_statistic_log + 0.25, color='grey', alpha=0.3, label='Selected k', zorder=2)
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1, prop={'size': 14})
         plt.xticks(self.summary.index)
         plt.xlim(0, self.max_k + 1)
 
@@ -288,11 +296,20 @@ class OptimalK:
             tick.set_fontname("Arial")
         subfig.set_xlabel("Number of clusters", fontsize=14)
         subfig.set_ylabel("Silhouette score", fontsize=14)
-        subfig.plot(self.summary.index, self.summary['sil_score'], '.--', markersize=10, label='Data', color=colorPaletteMathematica97[0])
+        subfig.plot(self.summary.index, self.summary['sil_score'], '.--', markersize=10, label='Data', color=colorPaletteMathematica97[0], zorder=1)
         subfig.errorbar(self.summary.index, self.summary['sil_score_ref'], yerr=self.summary['sil_score_ref_std'],
-                        fmt='--', markersize=10, capsize=3, capthick=2, label='Reference data', color=colorPaletteMathematica97[1])
-        subfig.axvspan(self.k_silscore - 0.25, self.k_silscore + 0.25, color='grey', alpha=0.3)
-        plt.legend(prop={'size': 14})
+                        fmt='--', markersize=10, capsize=3, capthick=2, label='Reference data', color=colorPaletteMathematica97[1], zorder=2)
+        for k in self.ks:
+            silscores = self.silscorek_percluster[k]
+            if k == 2:
+                subfig.scatter(np.ones(k)*k, silscores, marker='x', color='gray', alpha=0.7, label='Data, per cluster', zorder=3)
+            else:
+                subfig.scatter(np.ones(k)*k, silscores, marker='x', color='gray', alpha=0.7, zorder=3)
+        subfig.axvspan(self.k_silscore - 0.25, self.k_silscore + 0.25, color='gray', alpha=0.3, label='Selected k', zorder=4)
+        if type(sil_thresh) is float:
+            subfig.axhline(y=sil_thresh, linestyle='--', color='red', alpha=0.5, zorder=0)
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1, prop={'size': 14})
+        #plt.legend(prop={'size': 14})
         plt.xticks(self.summary.index)
         plt.xlim(0, self.max_k + 1)
         plt.tight_layout()

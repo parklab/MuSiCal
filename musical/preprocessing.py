@@ -203,7 +203,7 @@ def identify_distinct_cluster(X, H, frac_thresh=0.05):
     return k, clusters, Xs, distinct
 
 
-def stratify_samples(X, H=None,
+def stratify_samples(X, H=None, sil_thresh=0.9,
                      max_k=20, nrefs=50, metric='cosine', linkage_method='average', ref_method='a'):
     """Stratify samples by clustering with automatic selection of cluster number.
 
@@ -216,6 +216,19 @@ def stratify_samples(X, H=None,
 
     H : array-like of shape (n_components, n_samples)
         Optional exposure matrix.
+
+    sil_thresh : float, default 0.9
+        Silhouette score threshold. After determining the optimal number of clusters (k) by OptimalK,
+        if the optimal k is greater than 1, we check the per-cluster silhouette scores. If there is at least
+        one cluster with a silhouette score > sil_thresh, we accept the clustering into k clusters. Otherwise,
+        we reject the clustering, and take k = 1 instead. This helps distinguish distinct clusters such as
+        MMRD vs. MMRP, versus not-so-distinct clusters such as APOBEC vs. non-APOBEC.
+
+    max_k : int, default 20
+        Maximum number of clusters to be tested.
+
+    nrefs : int
+        Used in OptimalK. Number of reference datasets to be simulated.
 
     Returns:
     ----------
@@ -231,6 +244,13 @@ def stratify_samples(X, H=None,
 
     optimalK : object of OptimalK class
         Contains information about the clustering. For example, use optimalK.plot() to visualize the selection curves.
+
+    Notes:
+    ----------
+    1. Currently, sil_thresh is used in the way that if there is at least one cluster with silhouette score > sil_thresh, we
+        take the entire clustering returned by OptimalK. One may argue that we need k - 1 clusters with silhouette score > sil_thresh,
+        i.e., at most 1 cluster with silhouette score < sil_thresh, to accept the full clustering. Otherwise a smaller k might be
+        more appropriate. This is a bit more complicated. So we ignore this for now.
     """
     if H is None:
         data = normalize(X, norm='l1', axis=0)
@@ -241,11 +261,24 @@ def stratify_samples(X, H=None,
     optimalK = OptimalK(data, max_k=max_k, nrefs=nrefs, metric=metric, linkage_method=linkage_method, ref_method=ref_method)
     # Gather results
     k = optimalK.k # Number of clusters
-    cluster_membership = optimalK.cluster_membership
-    clusters = []
-    Xs = []
-    for i in sorted(list(set(cluster_membership))):
-        indices = np.arange(0, n_samples)[cluster_membership == i]
-        clusters.append(indices)
-        Xs.append(X[:, indices])
+    if k > 1:
+        # If k > 1, we check per-cluster silhouette scores.
+        # If at least one cluster has silhouette score > sil_thresh, we accept the clustering.
+        # Otherwise we reject it. 
+        if np.any(optimalK.silscorek_percluster[k] > sil_thresh):
+            cluster_membership = optimalK.cluster_membership
+            clusters = []
+            Xs = []
+            for i in sorted(list(set(cluster_membership))):
+                indices = np.arange(0, n_samples)[cluster_membership == i]
+                clusters.append(indices)
+                Xs.append(X[:, indices])
+        else:
+            k = 1
+            clusters = [np.arange(0, n_samples)]
+            Xs = [X]
+    else:
+        k = 1
+        clusters = [np.arange(0, n_samples)]
+        Xs = [X]
     return k, clusters, Xs, optimalK
