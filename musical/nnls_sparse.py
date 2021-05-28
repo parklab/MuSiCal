@@ -5,6 +5,7 @@ import pandas as pd
 import scipy as sp
 from .nnls import nnls
 from sklearn.metrics import pairwise_distances
+import scipy.stats as stats
 
 
 #def _llh_multinomial(x, p, epsilon=0.00001):
@@ -52,6 +53,7 @@ def _lh_multinomial(x, ps, offset=True, normalize=True):
     subtracted from log likelihood.
     """
     llhs = np.array([_llh_multinomial(x, p) for p in ps])
+    #llhs = np.array([stats.multinomial.logpmf(x, int(np.sum(x)), p) for p in ps])
     if offset:
         lhs = np.exp(llhs - np.max(llhs))
     else:
@@ -131,7 +133,8 @@ def nnls_sparse(x, W, method='llh',
     n_components = W.shape[1]
     n = np.sum(x)
     h, _ = sp.optimize.nnls(W, x)
-    h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(x, h, W, delta = frac_thresh_base)
+    if method in ['llh', 'cut', 'llh_stepwise']:
+        h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(x, h, W, delta = frac_thresh_base)
 
     inds_all = np.arange(0, n_components)
 
@@ -141,12 +144,12 @@ def nnls_sparse(x, W, method='llh',
         if len(inds_sig) > 1:
             lhs_nonzero = []
             for ind in inds_sig:
-               x_nnls2 = np.matmul(W[:, inds_sig[inds_sig != ind]],
-                                   sp.optimize.nnls(W[:, inds_sig[inds_sig != ind]], x)[0])
-               ps = np.array([x_nnls/np.sum(x_nnls),
-                             x_nnls2/np.sum(x_nnls2)])
-               lhs = _lh_multinomial(x, ps)
-               lhs_nonzero.append(lhs[0])
+                x_nnls2 = np.matmul(W[:, inds_sig[inds_sig != ind]],
+                                    sp.optimize.nnls(W[:, inds_sig[inds_sig != ind]], x)[0])
+                ps = np.array([x_nnls/np.sum(x_nnls),
+                               x_nnls2/np.sum(x_nnls2)])
+                lhs = _lh_multinomial(x, ps)
+                lhs_nonzero.append(lhs[0])
 
             lhs_nonzero = np.array(lhs_nonzero)
             # Select final set of nonzero signatures
@@ -192,5 +195,36 @@ def nnls_sparse(x, W, method='llh',
                 h[inds_zero] = 0.
             h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
             h_fracs = h/n
+
+    elif method == 'llh_stepwise':
+        x_nnls = W @ h
+        inds_current = np.copy(inds_sig)
+        if len(inds_sig) > 1:
+            while len(inds_current) > 1:
+                likelihood_ratios = []
+                xs = []
+                for ind in inds_current:
+                    x_nnls2 = W[:, inds_current[inds_current != ind]] @ sp.optimize.nnls(W[:, inds_current[inds_current != ind]], x)[0]
+                    xs.append(x_nnls2)
+                    ps = np.array([x_nnls/np.sum(x_nnls), x_nnls2/np.sum(x_nnls2)])
+                    lhs = _lh_multinomial(x, ps)
+                    likelihood_ratios.append(lhs[0])
+                #print(inds_current, likelihood_ratios)
+                if np.min(likelihood_ratios) > llh_thresh:
+                    break
+                else:
+                    index_remove = inds_current[np.argmin(likelihood_ratios)]
+                    inds_current = np.copy(inds_current[inds_current != index_remove])
+                    x_nnls = xs[np.argmin(likelihood_ratios)]
+
+            inds_sig = np.copy(inds_current)
+            inds_zero = np.array([i for i in inds_all if i not in inds_sig])
+        if len(inds_zero) > 0:
+            h[inds_zero] = 0.
+        h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
+        h_fracs = h/n
+
+    elif method == 'cut_naive':
+        h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(x, h, W, delta = frac_thresh)
 
     return h
