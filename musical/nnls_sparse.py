@@ -117,9 +117,12 @@ def _nnls_sparse_delta(x, h, W, delta=0.):
         w will be set to 0 exposure.
     """
     n = np.sum(x)
+    n_components = W.shape[1]
     h_fracs = h/n
-    inds_zero = np.where(h_fracs <= delta)[0]
     inds_sig = np.where(h_fracs > delta)[0]
+    if len(inds_sig) == 0:
+        inds_sig = np.array([np.argmax(h_fracs)])
+    inds_zero = np.array([i for i in np.arange(0, n_components) if i not in inds_sig])
     if len(inds_zero) > 0:
         h[inds_zero] = 0.
     h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
