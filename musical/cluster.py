@@ -233,10 +233,10 @@ class OptimalK:
         ### Finally cluster according to the optimal k
         _, self.cluster_membership = hierarchical_cluster(self.X, self.k, metric=self.metric, linkage_method=self.linkage_method)
 
-    def plot(self, sil_thresh=None, outfile=None):
+    def plot(self, sil_thresh=None, outfile=None, figsize=(10, 10)):
         mpl.rcParams['pdf.fonttype'] = 42
         fig = plt.figure()
-        fig.set_size_inches(10, 10)
+        fig.set_size_inches(figsize[0], figsize[1])
         sns.set_context("notebook")
         sns.set_style("ticks")
         plt.rc('xtick', labelsize=14)
