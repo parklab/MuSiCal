@@ -8,6 +8,7 @@ import itertools
 import scipy as sp
 import scipy.stats as stats
 from operator import itemgetter
+from sklearn.preprocessing import normalize
 
 ##################
 # Useful globals #
@@ -340,3 +341,61 @@ def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
             return np.nan, 0.5
     statistic, pvalue = stats.mannwhitneyu(za, zb, alternative=alternative)
     return statistic, pvalue
+
+
+def smallest_singular_value(X, norm=None, **kwargs):
+    """Calculate the smallest singular value of a matrix.
+
+    **kwargs are the arguments for sklearn.preprocessing.normalize().
+    """
+    if norm is None:
+        u, s, vh = np.linalg.svd(X)
+    else:
+        u, s, vh = np.linalg.svd(normalize(X, norm=norm, **kwargs))
+    return s[-1]
+
+
+def parallelotope_volume(X):
+    """Calculate the parallelotope volume.
+
+    Parameters
+    ----------
+    X : array, shape (m, n)
+        We consider rows of X to be edges of the parallelotope in n dimensional
+        space.
+
+        - If rank X != m, we return 0 with a warning that rows of X are not
+            linear independent.
+
+        - If rank X == m, and m == n, we use the parallelotope formed by rows
+            of X directly.
+
+        - If rank X == m, and m < n, we complete the parallelotope using
+            orthonormal basis of the null space (kernel) of X.
+
+    NOTE:
+    This is copied from the old SigExplorer. If we want to use it on the signature
+    matrix W, we should supply W.T.
+    """
+    m, n = X.shape
+    r = np.linalg.matrix_rank(X)
+    if r != m:
+        warnings.warn("Rank (= %d) of the input matrix is not equal to the "
+                      "row number (= %d). Thus rows of the input matrix are "
+                      "not linear independent" % (r, m),
+                      UserWarning)
+        return 0
+    else:
+        if m == n:
+            v = np.abs(np.linalg.det(normalize(X)))
+        else:
+            v = np.abs(
+                np.linalg.det(
+                    normalize(
+                        np.concatenate(
+                            (X, sp.linalg.null_space(X).T), axis=0
+                        ), axis=1
+                    )
+                )
+            )
+    return v
