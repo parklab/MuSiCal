@@ -491,14 +491,14 @@ class wrappedMVNMF:
         # Then perform statistical tests
         # Alternative tests we can use: ks_2samp, ttest_ind (perhaps on log errors)
         self.pvalue_grid = np.array([
-            stats.mannwhitneyu(self.samplewise_reconstruction_errors_grid[i, :],
+            stats.mannwhitneyu(self.samplewise_reconstruction_errors_grid[0, :],
                                self.samplewise_reconstruction_errors_grid[i+1, :],
                                alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
         ])
         self.pvalue_tail_grid = np.array([
-            differential_tail_test(self.samplewise_reconstruction_errors_grid[i, :],
+            differential_tail_test(self.samplewise_reconstruction_errors_grid[0, :],
                                    self.samplewise_reconstruction_errors_grid[i+1, :],
-                                   percentile=95,
+                                   percentile=90,
                                    alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
         ])
         # Select the best model
@@ -509,7 +509,10 @@ class wrappedMVNMF:
             warnings.warn('No p-value is smaller than or equal to %.3g. The largest lambda_tilde is selected. Enlarge the search grid of lambda_tilde.' % self.pthresh,
                           UserWarning)
             index_selected = len(self.pvalue_grid)
-        #
+        # Output a warning when the selected lambda_tilde is the left edge of the grid.
+        if index_selected == 0:
+            warnings.warn('The smallest lambda_tilde is selected. The optimal lambda_tilde might be smaller. We suggest to extend the grid to smaller lambda_tilde values to validate.',
+                          UserWarning)
         self.lambda_tilde = self.lambda_tilde_grid[index_selected]
         self.model = models[index_selected]
         self.W = self.model.W
