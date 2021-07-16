@@ -16,6 +16,7 @@ import os
 
 from .utils import beta_divergence, normalize_WH, _samplewise_error, differential_tail_test
 from .initialization import initialize_nmf
+from .nnls import nnls
 
 
 EPSILON = np.finfo(np.float32).eps
@@ -326,7 +327,7 @@ class MVNMF:
         self.W_init = W_init
         self.H_init = H_init
 
-        (W, H, n_iter, converged, Lambda, losses, reconstruction_errors,
+        (_W, _H, n_iter, converged, Lambda, losses, reconstruction_errors,
             volumes, line_search_steps, gammas) = _solve_mvnmf(
             X=self.X, W=self.W_init, H=self.H_init, lambda_tilde=self.lambda_tilde,
             delta=self.delta, gamma=self.gamma, max_iter=self.max_iter,
@@ -334,19 +335,30 @@ class MVNMF:
             conv_test_freq=self.conv_test_freq,
             conv_test_baseline=self.conv_test_baseline,
             verbose=self.verbose)
-        self.W = W
-        self.H = H
         self.n_iter = n_iter
         self.converged = converged
         self.Lambda = Lambda
+        # Normalize W and perform NNLS to recalculate H
+        W = normalize(_W, norm='l1', axis=0)
+        H = nnls(self.X, W)
+        #
+        self._W = _W
+        self._H = _H
+        self._loss = losses[-1]
+        self._reconstruction_error = reconstruction_errors[-1]
+        self._volume = volumes[-1]
+        #
+        self.W = W
+        self.H = H
+        loss, reconstruction_error, volume = _loss_mvnmf(self.X, self.W, self.H, self.Lambda, self.delta)
+        self.loss = loss
+        self.reconstruction_error = reconstruction_error
+        self.volume = volume
         #self.loss_track = losses
         #self.reconstruction_error_track = reconstruction_errors
         #self.volume_track = volumes
         #self.line_search_step_track = line_search_steps
         #self.gamma_track = gammas
-        self.loss = losses[-1]
-        self.reconstruction_error = reconstruction_errors[-1]
-        self.volume = volumes[-1]
 
         return self
 
@@ -359,7 +371,7 @@ class wrappedMVNMF:
     1. I removed eng from __init__ and did not set eng as an attribute. Otherwise pickle will have
     a problem when saving the class instance, because pickle does not deal with matlab well.
     2. Alternative methods for selecting lambda_tilde: e.g., require that the reconstruction error is within
-    (1 + thresh) * NMF reconstruction error, where thresh could be 0.1 for example. 
+    (1 + thresh) * NMF reconstruction error, where thresh could be 0.1 for example.
     """
     def __init__(self,
                  X,
@@ -506,5 +518,10 @@ class wrappedMVNMF:
         self.loss = self.model.loss
         self.reconstruction_error = self.model.reconstruction_error
         self.volume = self.model.volume
+        self._W = self.model._W
+        self._H = self.model._H
+        self._loss = self.model._loss
+        self._reconstruction_error = self.model._reconstruction_error
+        self._volume = self.model._volume
 
         return self

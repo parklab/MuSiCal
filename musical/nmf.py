@@ -5,6 +5,7 @@ from sklearn.preprocessing import normalize
 
 from .utils import beta_divergence
 from .initialization import initialize_nmf
+from .nnls import nnls
 
 
 EPSILON = np.finfo(np.float32).eps
@@ -207,18 +208,27 @@ class NMF:
         self.W_init = W_init
         self.H_init = H_init
 
-        W, H, n_iter, converged = _fit_mu(X=self.X,
-                                          W=self.W_init, H=self.H_init,
-                                          solver=self.solver,
-                                          max_iter=self.max_iter,
-                                          min_iter=self.min_iter,
-                                          tol=self.tol,
-                                          conv_test_freq=self.conv_test_freq,
-                                          conv_test_baseline=self.conv_test_baseline,
-                                          verbose=self.verbose)
+        _W, _H, n_iter, converged = _fit_mu(X=self.X,
+                                            W=self.W_init, H=self.H_init,
+                                            solver=self.solver,
+                                            max_iter=self.max_iter,
+                                            min_iter=self.min_iter,
+                                            tol=self.tol,
+                                            conv_test_freq=self.conv_test_freq,
+                                            conv_test_baseline=self.conv_test_baseline,
+                                            verbose=self.verbose)
+        # Normalize W and perform NNLS to recalculate H
+        W = normalize(_W, norm='l1', axis=0)
+        H = nnls(self.X, W)
+        #
+        self._W = _W
+        self._H = _H
+        self._reconstruction_error = beta_divergence(self.X, self._W @ self._H, beta=1, square_root=False)
+        #
         self.W = W
         self.H = H
+        self.reconstruction_error = beta_divergence(self.X, self.W @ self.H, beta=1, square_root=False)
+        #
         self.n_iter = n_iter
         self.converged = converged
-        self.reconstruction_error = beta_divergence(self.X, self.W @ self.H, beta=1, square_root=False)
         return self
