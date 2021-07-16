@@ -329,12 +329,15 @@ def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
     """
     a = np.array(a)
     b = np.array(b)
+    if len(a) != len(b):
+        warnings.warn('Lengths of a and b are different. The differential tail test could lose power.',
+                      UserWarning)
     comb = np.concatenate([a, b])
     thresh = np.percentile(comb, percentile)
     za = a * (a > thresh)
     zb = b * (b > thresh)
     # If za and zb contain identical values, e.g., both za and zb are all zeros.
-    if (np.sort(za) == np.sort(zb)).all():
+    if len(za) == len(zb) and (np.sort(za) == np.sort(zb)).all():
         if alternative == 'two-sided':
             return np.nan, 1.0
         else:
