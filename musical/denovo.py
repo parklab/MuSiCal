@@ -238,7 +238,9 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
 
 
 def _select_n_components(n_components_all, samplewise_reconstruction_errors_all, sil_score_all,
+                         n_replicates, n_replicates_after_filtering_all,
                          pthresh=0.05, sil_score_mean_thresh=0.8, sil_score_min_thresh=0.2,
+                         n_replicates_filter_ratio_thresh=0.5,
                          method='algorithm1'):
     """Select the best n_components based on reconstruction error and stability.
 
@@ -253,6 +255,12 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     sil_score_all : dict
         Dictionary of signature-wise silhouette scores.
 
+    n_replicates : int
+        Number of replicates run.
+
+    n_replicates_after_filtering_all : dict
+        Dictionary of number of replicates after filtering in _gather_results()
+
     pthresh : float
         Threshold for p-value.
 
@@ -261,6 +269,9 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
 
     sil_score_min_thresh : float
         Minimum required min sil score for a solution to be considered stable.
+
+    n_replicates_filter_ratio_thresh : float
+        Minimum required ratio of n_replicates_after_filtering/n_replicates for a solution to be considered stable.
 
     method : str, 'algorithm1' | 'algorithm1.1' | 'algorithm2' | 'algorithm2.1'
         Cf: selecting_n_components.pdf
@@ -273,7 +284,9 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     ##### Stable solutions:
     n_components_stable = []
     for n_components in n_components_all:
-        if np.mean(sil_score_all[n_components]) >= sil_score_mean_thresh and np.min(sil_score_all[n_components]) >= sil_score_min_thresh:
+        if (np.mean(sil_score_all[n_components]) >= sil_score_mean_thresh and
+            np.min(sil_score_all[n_components]) >= sil_score_min_thresh and
+            n_replicates_after_filtering_all[n_components]/n_replicates >= n_replicates_filter_ratio_thresh):
             n_components_stable.append(n_components)
     n_components_stable = np.array(n_components_stable)
 
