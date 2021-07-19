@@ -240,7 +240,7 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
 def _select_n_components(n_components_all, samplewise_reconstruction_errors_all, sil_score_all,
                          n_replicates, n_replicates_after_filtering_all,
                          pthresh=0.05, sil_score_mean_thresh=0.8, sil_score_min_thresh=0.2,
-                         n_replicates_filter_ratio_thresh=0.5,
+                         n_replicates_filter_ratio_thresh=0.2,
                          method='algorithm1'):
     """Select the best n_components based on reconstruction error and stability.
 
@@ -714,7 +714,7 @@ class DenovoSig:
             pthresh=self.pthresh,
             sil_score_mean_thresh=0.8,
             sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.5,
+            n_replicates_filter_ratio_thresh=0.2,
             method='algorithm1'
         )
         self.W = self.W_all[self.n_components]
@@ -735,7 +735,7 @@ class DenovoSig:
             pthresh=self.pthresh,
             sil_score_mean_thresh=0.8,
             sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.5,
+            n_replicates_filter_ratio_thresh=0.2,
             method='algorithm1.1'
         )
 
@@ -748,7 +748,7 @@ class DenovoSig:
             pthresh=self.pthresh,
             sil_score_mean_thresh=0.8,
             sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.5,
+            n_replicates_filter_ratio_thresh=0.2,
             method='algorithm2'
         )
 
@@ -761,7 +761,7 @@ class DenovoSig:
             pthresh=self.pthresh,
             sil_score_mean_thresh=0.8,
             sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.5,
+            n_replicates_filter_ratio_thresh=0.2,
             method='algorithm2.1'
         )
 
