@@ -20,7 +20,7 @@ from .nnls import nnls
 from .refit import reassign
 from .validate import validate
 
-def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=None, 
+def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=None,
                     filter=False, filter_method='error_distribution', filter_thresh=0.05, filter_percentile=95):
     """Gather NMF or mvNMF results
 
@@ -405,6 +405,7 @@ class DenovoSig:
                  mvnmf_delta=1.0,
                  mvnmf_gamma=1.0,
                  mvnmf_pthresh=0.05,
+                 # Refitting:
                  use_catalog=True,
                  catalog_name='COSMIC_v3p1_SBS_WGS',
                  thresh_match = [0.99],
@@ -452,6 +453,7 @@ class DenovoSig:
         self.mvnmf_delta = mvnmf_delta
         self.mvnmf_gamma = mvnmf_gamma
         self.mvnmf_pthresh = mvnmf_pthresh
+        # Refitting
         self.use_catalog = use_catalog
         self.catalog_name = catalog_name
         self.thresh_match = thresh_match
@@ -574,6 +576,8 @@ class DenovoSig:
         # 3. Select n_components
         self.W_raw_all = {} # Save all raw results
         self.H_raw_all = {} # Save all raw results
+        self._W_raw_all = {}
+        self._H_raw_all = {}
         self.lambda_tilde_all = {} # Save lambda_tilde's used for each mvNMF run
         self.W_all = {}
         self.H_all = {}
@@ -651,6 +655,8 @@ class DenovoSig:
             ##############################################
             self.W_raw_all[n_components] = [model.W for model in models] # Save all raw results
             self.H_raw_all[n_components] = [model.H for model in models] # Save all raw results
+            self._W_raw_all[n_components] = [model._W for model in models]
+            self._H_raw_all[n_components] = [model._H for model in models]
             # Save lambda_tilde's used for each mvNMF run
             if self.method == 'nmf':
                 self.lambda_tilde_all[n_components] = None
