@@ -75,8 +75,9 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
         # Here we define the sil_score to be 1 when there is only one sample in each cluster.
         # This is different from the canonical definition, where it is 0.
         # 20210415 - We change this to 0.0. When there is only 1 sample in the cluster, it means that solution is rare and thus not stable.
-        sil_score = np.zeros(n_components)
-        sil_score_mean = 0.0
+        # 20210719 - We'll still use 1. We'll look at n_replicates_after_filtering in _select_n_components in addition.
+        sil_score = np.ones(n_components)
+        sil_score_mean = 1.0
         return W, H, sil_score, sil_score_mean, len(Ws)
     ### If more than one solutions:
     ### If there is only 1 signature:
