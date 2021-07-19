@@ -337,7 +337,8 @@ def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
     za = a * (a > thresh)
     zb = b * (b > thresh)
     # If za and zb contain identical values, e.g., both za and zb are all zeros.
-    if len(za) == len(zb) and (np.sort(za) == np.sort(zb)).all():
+    #if len(za) == len(zb) and (np.sort(za) == np.sort(zb)).all():
+    if len(set(np.concatenate((za, zb)))) == 1:
         if alternative == 'two-sided':
             return np.nan, 1.0
         else:
