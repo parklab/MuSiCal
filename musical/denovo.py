@@ -294,7 +294,7 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     if len(n_components_all) == 1:
         warnings.warn('Only 1 n_components value is tested. Selecting this n_components value.',
                       UserWarning)
-        return n_components_all[0], n_components_stable, np.array([])
+        return n_components_all[0], n_components_stable, np.array([]), np.array([])
 
     ##### Calculate p-values:
     pvalue_all = np.array([
@@ -303,11 +303,18 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
                            alternative='greater')[1] for n_components in n_components_all[0:-1]
     ])
 
+    pvalue_tail_all = np.array([
+        differential_tail_test(samplewise_reconstruction_errors_all[n_components],
+                               samplewise_reconstruction_errors_all[n_components + 1],
+                               percentile=90,
+                               alternative='greater')[1] for n_components in n_components_all[0:-1]
+    ])
+
     ##### Select n_components
     if method == 'algorithm1' or method == 'algorithm1.1':
         n_components_significant = []
-        for p, n_components in zip(pvalue_all, n_components_all[1:]):
-            if p <= pthresh:
+        for p, p_tail, n_components in zip(pvalue_all, pvalue_tail_all, n_components_all[1:]):
+            if p <= pthresh or p_tail <= pthresh:
                 n_components_significant.append(n_components)
         n_components_significant = np.array(n_components_significant)
         if len(n_components_stable) == 0 and len(n_components_significant) == 0:
@@ -343,8 +350,8 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
                 n_components_selected = np.max(n_components_intersect)
     elif method == 'algorithm2' or method == 'algorithm2.1':
         n_components_nonsignificant = []
-        for p, n_components in zip(pvalue_all, n_components_all[0:-1]):
-            if p > pthresh:
+        for p, p_tail, n_components in zip(pvalue_all, pvalue_tail_all, n_components_all[0:-1]):
+            if p > pthresh and p_tail > pthresh:
                 n_components_nonsignificant.append(n_components)
         n_components_nonsignificant = np.array(n_components_nonsignificant)
         if len(n_components_stable) == 0 and len(n_components_nonsignificant) == 0:
@@ -381,7 +388,7 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     else:
         raise ValueError('Invalid method for _select_n_components.')
 
-    return n_components_selected, n_components_stable, pvalue_all
+    return n_components_selected, n_components_stable, pvalue_all, pvalue_tail_all
 
 
 
@@ -698,13 +705,16 @@ class DenovoSig:
         self.samplewise_reconstruction_errors_all = {
             n_components: _samplewise_error(self.X, self.W_all[n_components] @ self.H_all[n_components]) for n_components in self.n_components_all
         }
-        self.n_components, self.n_components_stable, self.pvalue_all = _select_n_components(
+        self.n_components, self.n_components_stable, self.pvalue_all, self.pvalue_tail_all = _select_n_components(
             self.n_components_all,
             self.samplewise_reconstruction_errors_all,
             self.sil_score_all,
+            self.n_replicates,
+            self.n_replicates_after_filtering_all,
             pthresh=self.pthresh,
             sil_score_mean_thresh=0.8,
             sil_score_min_thresh=0.2,
+            n_replicates_filter_ratio_thresh=0.5,
             method='algorithm1'
         )
         self.W = self.W_all[self.n_components]
