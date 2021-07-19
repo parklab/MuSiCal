@@ -150,33 +150,8 @@ def match_catalog_pair(W1, W2, metric='cosine'):
     return W2[:, W2_reordered_indices], W2_reordered_indices, pdist
 
 
-def simulate_count_matrix(W, H, method='multinomial'):
-    n_features, n_components = W.shape
-    _, n_samples = H.shape
-
-    # Just in case W and H are not properly normalized
-    W, H = normalize_WH(W, H)
-
-    if method == 'multinomial':
-        X_simulated = []
-        for h in H.T:
-            x = np.zeros(n_features, dtype=int)
-            for i in range(0, n_components):
-                N = int(round(h[i]))
-                indices = np.random.choice(n_features, size=N, replace=True, p=W[:, i])
-                x += np.array([np.sum(indices == j) for j in range(0, n_features)])
-            X_simulated.append(x)
-        X_simulated = np.array(X_simulated).T
-    else:
-        raise ValueError(
-            'Invalid method parameter: got %r instead of one of %r' %
-            (method, {'multinomial'}))
-
-    return X_simulated
-
-
 def bootstrap_count_matrix(X):
-    n_features, n_samples = X.shape
+    #n_features, n_samples = X.shape
     X_bootstrapped = []
     for x in X.T:
         N = int(round(np.sum(x)))
@@ -187,6 +162,32 @@ def bootstrap_count_matrix(X):
         #                       for i in range(0, n_features)])
     X_bootstrapped = np.array(X_bootstrapped).T
     return X_bootstrapped
+
+
+def simulate_count_matrix(W, H, method='multinomial'):
+    #n_features, n_components = W.shape
+    #_, n_samples = H.shape
+
+    # Just in case W and H are not properly normalized
+    #W, H = normalize_WH(W, H)
+
+    if method == 'multinomial':
+        #X_simulated = []
+        #for h in H.T:
+        #    x = np.zeros(n_features, dtype=int)
+        #    for i in range(0, n_components):
+        #        N = int(round(h[i]))
+        #        indices = np.random.choice(n_features, size=N, replace=True, p=W[:, i])
+        #        x += np.array([np.sum(indices == j) for j in range(0, n_features)])
+        #    X_simulated.append(x)
+        #X_simulated = np.array(X_simulated).T
+        X_simulated = bootstrap_count_matrix(W @ H)
+    else:
+        raise ValueError(
+            'Invalid method parameter: got %r instead of one of %r' %
+            (method, {'multinomial'}))
+
+    return X_simulated
 
 
 def _samplewise_error(X, X_reconstructed):
