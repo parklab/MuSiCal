@@ -724,6 +724,52 @@ class DenovoSig:
         self.reconstruction_error = self.reconstruction_error_all[self.n_components]
         self.samplewise_reconstruction_errors = self.samplewise_reconstruction_errors_all[self.n_components]
 
+        self.n_components1 = self.n_components
+
+        self.n_components1p1, _, _, _ = _select_n_components(
+            self.n_components_all,
+            self.samplewise_reconstruction_errors_all,
+            self.sil_score_all,
+            self.n_replicates,
+            self.n_replicates_after_filtering_all,
+            pthresh=self.pthresh,
+            sil_score_mean_thresh=0.8,
+            sil_score_min_thresh=0.2,
+            n_replicates_filter_ratio_thresh=0.5,
+            method='algorithm1.1'
+        )
+
+        self.n_components2, _, _, _ = _select_n_components(
+            self.n_components_all,
+            self.samplewise_reconstruction_errors_all,
+            self.sil_score_all,
+            self.n_replicates,
+            self.n_replicates_after_filtering_all,
+            pthresh=self.pthresh,
+            sil_score_mean_thresh=0.8,
+            sil_score_min_thresh=0.2,
+            n_replicates_filter_ratio_thresh=0.5,
+            method='algorithm2'
+        )
+
+        self.n_components2p1, _, _, _ = _select_n_components(
+            self.n_components_all,
+            self.samplewise_reconstruction_errors_all,
+            self.sil_score_all,
+            self.n_replicates,
+            self.n_replicates_after_filtering_all,
+            pthresh=self.pthresh,
+            sil_score_mean_thresh=0.8,
+            sil_score_min_thresh=0.2,
+            n_replicates_filter_ratio_thresh=0.5,
+            method='algorithm2.1'
+        )
+
+        if self.n_components != self.n_components2:
+            warnings.warn('The best n_components selected by algorithm1 and algorithm2 are different. '
+                          'One should look at the results and manually select the best n_components.',
+                          UserWarning)
+
         return self
 
     def set_params(self,
