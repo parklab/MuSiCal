@@ -180,9 +180,11 @@ def bootstrap_count_matrix(X):
     X_bootstrapped = []
     for x in X.T:
         N = int(round(np.sum(x)))
-        indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
-        X_bootstrapped.append([np.sum(indices == i)
-                               for i in range(0, n_features)])
+        p = x/np.sum(x)
+        X_bootstrapped.append(np.random.multinomial(N, p))
+        #indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
+        #X_bootstrapped.append([np.sum(indices == i)
+        #                       for i in range(0, n_features)])
     X_bootstrapped = np.array(X_bootstrapped).T
     return X_bootstrapped
 
