@@ -120,8 +120,11 @@ def beta_divergence(A, B, beta=1, square_root=False):
         # differences will be lost, and we'll get 0.0 results.
         res = np.sum(A_data*np.log(A_data/B_data) - A_data + B_data)
         res = res + np.sum(B_data_remaining)
+    elif beta == 2 or beta == 'frobenius':
+        res = np.linalg.norm(A - B, ord=None) # 2-norm for vectors and frobenius norm for matrices
+        res = res**2 / 2
     else:
-        raise ValueError('Only beta = 1 is implemented.')
+        raise ValueError('Only beta = 1 and beta = 2 are implemented.')
     if square_root:
         res = np.sqrt(2*res)
 
