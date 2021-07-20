@@ -20,6 +20,7 @@ from .nnls import nnls
 
 
 EPSILON = np.finfo(np.float32).eps
+EPSILON2 = np.finfo(np.float16).eps
 
 def _solve_mvnmf_matlab(X, W, H, eng=None, lambda_tilde=0.001, delta=0.1, max_iter=100, gamma=1.0):
     """Mvnmf solver
@@ -389,12 +390,14 @@ class wrappedMVNMF:
                  conv_test_freq=10,
                  conv_test_baseline=None,
                  ncpu=1,
+                 noise=False, # Whether or not to add noise to the samplewise errors.
                  verbose=0#,
                  #eng=None
                  ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
         self.X = X
+        self.n_features, self.n_samples = self.X.shape
         self.n_components = n_components
         if lambda_tilde_grid is None:
             lambda_tilde_grid = np.array([1e-15, 1e-14, 1e-13, 1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1.0, 10.0, 100.0])
@@ -421,6 +424,13 @@ class wrappedMVNMF:
         if ncpu is None:
             ncpu = os.cpu_count()
         self.ncpu = ncpu
+        if type(noise) is bool:
+            if noise:
+                self.noise = EPSILON2
+            else:
+                self.noise = noise
+        elif np.issubdtype(type(noise), np.floating):
+            self.noise = noise
         self.verbose = verbose
         #self.eng = eng
 
@@ -501,8 +511,39 @@ class wrappedMVNMF:
                                    percentile=90,
                                    alternative='less')[1] for i in range(0, len(self.lambda_tilde_grid) - 1)
         ])
+        # If no noise is added, the pvalues are directly used.
+        if type(self.noise) is bool:
+            self.pvalue_indicator_grid = (self.pvalue_grid <= self.pthresh)
+            self.pvalue_tail_indicator_grid = (self.pvalue_tail_grid <= self.pthresh)
+        # Otherwise, we add noise and do the tests again. We do it multiple times and take the majority vote.
+        else:
+            # Output a warning whenever this is done
+            warnings.warn('Random noise between %.3g and %.3g is added to the samplewise errors. Make sure this makes sense.' % (-self.noise, self.noise),
+                          UserWarning)
+            self.pvalue_indicator_grid = []
+            self.pvalue_tail_indicator_grid = []
+            for i in range(0, len(self.lambda_tilde_grid) - 1):
+                ps = []
+                ps_tail = []
+                for _ in range(0, 51):
+                    _x1 = self.samplewise_reconstruction_errors_grid[0, :] + np.random.uniform(-self.noise, self.noise, self.n_samples)
+                    _x2 = self.samplewise_reconstruction_errors_grid[i+1, :] + np.random.uniform(-self.noise, self.noise, self.n_samples)
+                    _offset = np.min([_x1, _x2])
+                    ps.append(stats.mannwhitneyu(_x1, _x2, alternative='less')[1])
+                    # We need to make everything positive to do the differential tail test.
+                    if _offset < 0:
+                        ps_tail.append(differential_tail_test(_x1 - _offset, _x2 - _offset, percentile=90, alternative='less')[1])
+                    else:
+                        ps_tail.append(differential_tail_test(_x1, _x2, percentile=90, alternative='less')[1])
+                ps = np.array(ps)
+                ps_tail = np.array(ps_tail)
+                self.pvalue_indicator_grid.append(np.sum(ps <= self.pthresh) > np.sum(ps > self.pthresh))
+                self.pvalue_tail_indicator_grid.append(np.sum(ps_tail <= self.pthresh) > np.sum(ps_tail > self.pthresh))
+            self.pvalue_indicator_grid = np.array(self.pvalue_indicator_grid)
+            self.pvalue_tail_indicator_grid = np.array(self.pvalue_tail_indicator_grid)
         # Select the best model
-        indicator = np.logical_or(self.pvalue_grid <= self.pthresh, self.pvalue_tail_grid <= self.pthresh)
+        indicator = np.logical_or(self.pvalue_indicator_grid, self.pvalue_tail_indicator_grid)
+        #indicator = np.logical_or(self.pvalue_grid <= self.pthresh, self.pvalue_tail_grid <= self.pthresh)
         if indicator.any():
             index_selected = np.argmax(indicator)
         else: # All False
