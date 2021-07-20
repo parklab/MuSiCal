@@ -426,6 +426,7 @@ class DenovoSig:
                  mvnmf_delta=1.0,
                  mvnmf_gamma=1.0,
                  mvnmf_pthresh=0.05,
+                 mvnmf_noise=False,
                  # Refitting:
                  use_catalog=True,
                  catalog_name='COSMIC_v3p1_SBS_WGS',
@@ -474,6 +475,7 @@ class DenovoSig:
         self.mvnmf_delta = mvnmf_delta
         self.mvnmf_gamma = mvnmf_gamma
         self.mvnmf_pthresh = mvnmf_pthresh
+        self.mvnmf_noise = mvnmf_noise
         # Refitting
         self.use_catalog = use_catalog
         self.catalog_name = catalog_name
@@ -537,7 +539,8 @@ class DenovoSig:
                                      pthresh=self.mvnmf_pthresh,
                                      delta=self.mvnmf_delta,
                                      gamma=self.mvnmf_gamma,
-                                     ncpu=1
+                                     ncpu=1,
+                                     noise=self.mvnmf_noise
                                     )
                 model.fit(eng=eng)
                 if self.verbose:
@@ -649,7 +652,8 @@ class DenovoSig:
                                          pthresh=self.mvnmf_pthresh,
                                          delta=self.mvnmf_delta,
                                          gamma=self.mvnmf_gamma,
-                                         ncpu=self.ncpu
+                                         ncpu=self.ncpu,
+                                         noise=self.mvnmf_noise
                                         )
                     model.fit(eng=eng)
                     models = [model]
