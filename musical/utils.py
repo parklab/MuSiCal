@@ -193,10 +193,10 @@ def simulate_count_matrix(W, H, method='multinomial'):
     return X_simulated
 
 
-def _samplewise_error(X, X_reconstructed, beta=1):
+def _samplewise_error(X, X_reconstructed, beta=1, square_root=False):
     errors = []
     for x, x_reconstructed in zip(X.T, X_reconstructed.T):
-        errors.append(beta_divergence(x, x_reconstructed, beta=beta, square_root=False))
+        errors.append(beta_divergence(x, x_reconstructed, beta=beta, square_root=square_root))
     errors = np.array(errors)
     return errors
 
