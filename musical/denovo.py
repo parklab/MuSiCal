@@ -51,17 +51,17 @@ def _filter_results(X, Ws, Hs, method='error_distribution', thresh=0.05, percent
             ])
             retained_indices = np.arange(0, len(Ws))[np.logical_and(pvalues > thresh, pvalues_tail > thresh)]
             Ws_filtered = [Ws[i] for i in retained_indices]
-            Hs_filtered = [Hs[i] for i in ratained_indices]
+            Hs_filtered = [Hs[i] for i in retained_indices]
             return Ws_filtered, Hs_filtered, retained_indices
         elif method == 'error_MAE':
             retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
             Ws_filtered = [Ws[i] for i in retained_indices]
-            Hs_filtered = [Hs[i] for i in ratained_indices]
+            Hs_filtered = [Hs[i] for i in retained_indices]
             return Ws_filtered, Hs_filtered, retained_indices
         elif method == 'error_min':
             retained_indices = np.arange(0, len(Ws))[errors <= (thresh + 1.0)*np.min(errors)]
             Ws_filtered = [Ws[i] for i in retained_indices]
-            Hs_filtered = [Hs[i] for i in ratained_indices]
+            Hs_filtered = [Hs[i] for i in retained_indices]
             return Ws_filtered, Hs_filtered, retained_indices
         else:
             raise ValueError('Invalid method for _filter_results().')
