@@ -765,11 +765,11 @@ class DenovoSig:
             self.sil_score_all,
             self.n_replicates,
             self.n_replicates_after_filtering_all,
-            pthresh=self.pthresh,
-            sil_score_mean_thresh=0.8,
-            sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.2,
-            method='algorithm1'
+            pthresh=self.select_pthresh,
+            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+            sil_score_min_thresh=self.select_sil_score_min_thresh,
+            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
+            method=self.select_method
         )
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
@@ -786,10 +786,10 @@ class DenovoSig:
             self.sil_score_all,
             self.n_replicates,
             self.n_replicates_after_filtering_all,
-            pthresh=self.pthresh,
-            sil_score_mean_thresh=0.8,
-            sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.2,
+            pthresh=self.select_pthresh,
+            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+            sil_score_min_thresh=self.select_sil_score_min_thresh,
+            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
             method='algorithm1.1'
         )
 
@@ -799,10 +799,10 @@ class DenovoSig:
             self.sil_score_all,
             self.n_replicates,
             self.n_replicates_after_filtering_all,
-            pthresh=self.pthresh,
-            sil_score_mean_thresh=0.8,
-            sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.2,
+            pthresh=self.select_pthresh,
+            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+            sil_score_min_thresh=self.select_sil_score_min_thresh,
+            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
             method='algorithm2'
         )
 
@@ -812,10 +812,10 @@ class DenovoSig:
             self.sil_score_all,
             self.n_replicates,
             self.n_replicates_after_filtering_all,
-            pthresh=self.pthresh,
-            sil_score_mean_thresh=0.8,
-            sil_score_min_thresh=0.2,
-            n_replicates_filter_ratio_thresh=0.2,
+            pthresh=self.select_pthresh,
+            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+            sil_score_min_thresh=self.select_sil_score_min_thresh,
+            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
             method='algorithm2.1'
         )
 
