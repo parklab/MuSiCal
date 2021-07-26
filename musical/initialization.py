@@ -86,6 +86,11 @@ def _init_cluster(X, n_components, metric='cosine', linkage='average',
     linkage = sch.linkage(d, method=linkage)
     for ncluster in range(n_components, np.min([n_samples, max_ncluster]) + 1):
         cluster_membership = sch.fcluster(linkage, ncluster, criterion='maxclust')
+        if len(set(cluster_membership)) != ncluster:
+            cluster_membership = sch.cut_tree(linkage, n_clusters=ncluster).flatten() + 1
+            if len(set(cluster_membership)) != ncluster:
+                warnings.warn('Number of clusters output by cut_tree or fcluster is not equal to the specified number of clusters',
+                              UserWarning)
         W = []
         for i in range(1, ncluster + 1):
             if np.sum(cluster_membership == i) >= min_nsample:

@@ -98,6 +98,11 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
         d_square_form = sp.spatial.distance.squareform(d)
         linkage = sch.linkage(d, method='average')
         cluster_membership = sch.fcluster(linkage, n_components, criterion="maxclust")
+        if len(set(cluster_membership)) != n_components:
+            cluster_membership = sch.cut_tree(linkage, n_clusters=n_components).flatten() + 1
+            if len(set(cluster_membership)) != n_components:
+                warnings.warn('Number of clusters output by cut_tree or fcluster is not equal to the specified number of clusters',
+                              UserWarning)
         W = []
         for i in range(0, n_components):
             W.append(np.mean(sigs[:, cluster_membership == i + 1], 1))

@@ -65,6 +65,11 @@ def hierarchical_cluster(X, k, metric='cosine', linkage_method='average'):
     d_square_form = sp.spatial.distance.squareform(d)
     linkage = sch.linkage(d, method=linkage_method)
     cluster_membership = sch.fcluster(linkage, k, criterion="maxclust")
+    if len(set(cluster_membership)) != k:
+        cluster_membership = sch.cut_tree(linkage, n_clusters=k).flatten() + 1
+        if len(set(cluster_membership)) != k:
+            warnings.warn('Number of clusters output by cut_tree or fcluster is not equal to the specified number of clusters',
+                          UserWarning)
     return d_square_form, cluster_membership
 
 
@@ -150,6 +155,11 @@ class OptimalK:
         silscorek_percluster = {}
         for k in range(1, max_k + 1):
             cluster_membership = sch.fcluster(linkage, k, criterion="maxclust")
+            if len(set(cluster_membership)) != k:
+                cluster_membership = sch.cut_tree(linkage, n_clusters=k).flatten() + 1
+                if len(set(cluster_membership)) != k:
+                    warnings.warn('Number of clusters output by cut_tree or fcluster is not equal to the specified number of clusters',
+                                  UserWarning)
             Wk.append(_within_cluster_variation(d_square_form, cluster_membership))
             if k == 1:
                 silscorek.append(np.nan)
