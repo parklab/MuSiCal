@@ -420,7 +420,6 @@ class DenovoSig:
     """
     def __init__(self,
                  X,
-                 pthresh=0.05, # for selecting n_components
                  min_n_components=None,
                  max_n_components=None,
                  init='random',
@@ -435,6 +434,19 @@ class DenovoSig:
                  tol=1e-10,
                  ncpu=1,
                  verbose=0,
+                 # Specific for result filtering:
+                 filter=True,
+                 filter_method='error_distribution',
+                 filter_thresh=0.05,
+                 filter_percentile=90,
+                 # Specific for result gathering:
+                 cluster_method='cluster_by_matching', # Note that this does not affect the result of the new n_components selection method.
+                 # Specific for n_components selection:
+                 select_method='algorithm1',
+                 select_pthresh=0.05,
+                 select_sil_score_mean_thresh=0.8,
+                 select_sil_score_min_thresh=0.2,
+                 select_n_replicates_filter_ratio_thresh=0.2,
                  # mvnmf specific:
                  mvnmf_hyperparameter_method='single', # single or all or fixed
                  mvnmf_lambda_tilde_grid=None,
@@ -460,10 +472,9 @@ class DenovoSig:
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
         self.X = X
-        self.pthresh = pthresh
         self.n_features, self.n_samples = self.X.shape
         if min_n_components is None:
-            min_n_components = 2
+            min_n_components = 1
         self.min_n_components = min_n_components
         if max_n_components is None:
             max_n_components = 20
@@ -484,6 +495,19 @@ class DenovoSig:
         if ncpu is None:
             ncpu = os.cpu_count()
         self.ncpu=ncpu
+        # Specific for result filtering:
+        self.filter=filter
+        self.filter_method=filter_method
+        self.filter_thresh=filter_thresh
+        self.filter_percentile=filter_percentile
+        # Specific for result gathering:
+        self.cluster_method=cluster_method
+        # Specific for n_components selection:
+        self.select_method=select_method
+        self.select_pthresh=select_pthresh
+        self.select_sil_score_mean_thresh=select_sil_score_mean_thresh
+        self.select_sil_score_min_thresh=select_sil_score_min_thresh
+        self.select_n_replicates_filter_ratio_thresh=select_n_replicates_filter_ratio_thresh
         # mvnmf specific
         self.mvnmf_hyperparameter_method = mvnmf_hyperparameter_method
         self.mvnmf_lambda_tilde_grid = mvnmf_lambda_tilde_grid
@@ -624,6 +648,7 @@ class DenovoSig:
         self.sil_score_mean_all = {}
         self.reconstruction_error_all = {}
         self.n_replicates_after_filtering_all = {}
+        self.retained_indices_after_filtering_all = {}
         start = time.time()
         for n_components in self.n_components_all:
             ##################################################
@@ -707,10 +732,20 @@ class DenovoSig:
                     self.lambda_tilde_all[n_components] = [lambda_tilde]*self.n_replicates
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     self.lambda_tilde_all[n_components] = [self.mvnmf_lambda_tilde_grid]*self.n_replicates
-            W, H, sil_score, sil_score_mean, n_replicates_after_filtering = _gather_results(
-                self.X, [model.W for model in models], Hs=[model.H for model in models], filter=True
-            )
-            self.n_replicates_after_filtering_all[n_components] = n_replicates_after_filtering
+            # Filter
+            if self.filter:
+                Ws, Hs, retained_indices = _filter_results(
+                    self.X, self.W_raw_all[n_components], self.H_raw_all[n_components],
+                    method=self.filter_method, thresh=self.filter_thresh, percentile=self.filter_percentile
+                )
+            else:
+                Ws = self.W_raw_all[n_components]
+                Hs = self.H_raw_all[n_components]
+                retained_indices = np.arange(0, self.n_replicates)
+            self.retained_indices_after_filtering_all[n_components] = retained_indices
+            self.n_replicates_after_filtering_all[n_components] = len(Ws)
+            # Gather
+            W, H, sil_score, sil_score_mean = _gather_results(self.X, Ws, method=self.cluster_method)
             self.W_all[n_components] = W
             self.H_all[n_components] = H
             self.sil_score_all[n_components] = sil_score
