@@ -20,53 +20,63 @@ from .nnls import nnls
 from .refit import reassign
 from .validate import validate
 
-def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=None,
-                    filter=False, filter_method='error_distribution', filter_thresh=0.05, filter_percentile=90):
+
+def _filter_results(X, Ws, Hs, method='error_distribution', thresh=0.05, percentile=90):
+    """Filter NMF or mvNMF results
+
+    TODO
+    ----------
+    1. Currently for filtering based on tail distributions, we use a fixed percentile as a threshold for the definition of tails.
+        Alternatively, we can try to fit a gaussian mixture model to the samplewise error distribution (combined), and decide
+        whether there is a cluster of samples that are not reconstructed well. If there is, then we ues the threshold defined by
+        the mixture model to define tails. If there isn't, then we simply skip tail based filtering.
+    """
+    if len(Ws) == 1:
+        return Ws, Hs, np.array([0])
+    else:
+        errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
+        if method == 'error_distribution':
+            samplewise_errors = [_samplewise_error(X, W @ H) for W, H in zip(Ws, Hs)]
+            best_index = np.argmin(errors)
+            pvalues = np.array([
+                stats.mannwhitneyu(samplewise_errors[i],
+                                   samplewise_errors[best_index],
+                                   alternative='greater')[1] for i in range(0, len(Ws))
+            ])
+            pvalues_tail = np.array([
+                differential_tail_test(samplewise_errors[i],
+                                       samplewise_errors[best_index],
+                                       percentile=percentile,
+                                       alternative='greater')[1] for i in range(0, len(Ws))
+            ])
+            retained_indices = np.arange(0, len(Ws))[np.logical_and(pvalues > thresh, pvalues_tail > thresh)]
+            Ws_filtered = [Ws[i] for i in retained_indices]
+            Hs_filtered = [Hs[i] for i in ratained_indices]
+            return Ws_filtered, Hs_filtered, retained_indices
+        elif method == 'error_MAE':
+            retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= thresh*stats.median_abs_deviation(errors)]
+            Ws_filtered = [Ws[i] for i in retained_indices]
+            Hs_filtered = [Hs[i] for i in ratained_indices]
+            return Ws_filtered, Hs_filtered, retained_indices
+        elif method == 'error_min':
+            retained_indices = np.arange(0, len(Ws))[errors <= (thresh + 1.0)*np.min(errors)]
+            Ws_filtered = [Ws[i] for i in retained_indices]
+            Hs_filtered = [Hs[i] for i in ratained_indices]
+            return Ws_filtered, Hs_filtered, retained_indices
+        else:
+            raise ValueError('Invalid method for _filter_results().')
+
+
+def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
     """Gather NMF or mvNMF results
 
     TODO
     ----------
     1. Replicate the clustering method in SigProfilerExtractor.
-    2. Currently for filtering based on tail distributions, we use a fixed percentile as a threshold for the definition of tails.
-        Alternatively, we can try to fit a gaussian mixture model to the samplewise error distribution (combined), and decide
-        whether there is a cluster of samples that are not reconstructed well. If there is, then we ues the threshold defined by
-        the mixture model to define tails. If there isn't, then we simply skip tail based filtering.
     """
     n_features, n_samples = X.shape
     if n_components is None:
         n_components = Ws[0].shape[1]
-    # Filtering
-    if filter:
-        if len(Ws) == 1:
-            pass
-        else:
-            if Hs is None:
-                raise ValueError('If filtering is to be performed, Hs must be supplied.')
-            errors = np.array([beta_divergence(X, W @ H) for W, H in zip(Ws, Hs)])
-            if filter_method == 'error_distribution':
-                samplewise_errors = [_samplewise_error(X, W @ H) for W, H in zip(Ws, Hs)]
-                best_index = np.argmin(errors)
-                pvalues = np.array([
-                    stats.mannwhitneyu(samplewise_errors[i],
-                                       samplewise_errors[best_index],
-                                       alternative='greater')[1] for i in range(0, len(Ws))
-                ])
-                pvalues_tail = np.array([
-                    differential_tail_test(samplewise_errors[i],
-                                           samplewise_errors[best_index],
-                                           percentile=filter_percentile,
-                                           alternative='greater')[1] for i in range(0, len(Ws))
-                ])
-                retained_indices = np.arange(0, len(Ws))[np.logical_and(pvalues > filter_thresh, pvalues_tail > filter_thresh)]
-                Ws = [Ws[i] for i in retained_indices]
-            elif filter_method == 'error_MAE':
-                retained_indices = np.arange(0, len(Ws))[(errors - np.median(errors)) <= filter_thresh*stats.median_abs_deviation(errors)]
-                Ws = [Ws[i] for i in retained_indices]
-            elif filter_method == 'error_min':
-                retained_indices = np.arange(0, len(Ws))[errors <= (filter_thresh + 1.0)*np.min(errors)]
-                Ws = [Ws[i] for i in retained_indices]
-            else:
-                raise ValueError('Invalid filter_method for _gather_results().')
     ### If only one solution:
     if len(Ws) == 1:
         W = Ws[0]
@@ -78,7 +88,7 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
         # 20210719 - We'll still use 1. We'll look at n_replicates_after_filtering in _select_n_components in addition.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean, len(Ws)
+        return W, H, sil_score, sil_score_mean
     ### If more than one solutions:
     ### If there is only 1 signature:
     if n_components == 1:
@@ -88,7 +98,7 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
         # When there is only 1 cluster, we also define the sil_score to be 1.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean, len(Ws)
+        return W, H, sil_score, sil_score_mean
     ### If there are more than 1 signatures
     if method == 'hierarchical':
         sigs = np.concatenate(Ws, axis=1)
@@ -116,7 +126,7 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean, len(Ws)
+        return W, H, sil_score, sil_score_mean
     elif method == 'matching':
         Ws_matched = [Ws[0]]
         for W in Ws[1:]:
@@ -140,7 +150,7 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean, len(Ws)
+        return W, H, sil_score, sil_score_mean
     elif method == 'cluster_by_matching':
         # pubmed: 32118208
         ### First, get all matchings
@@ -237,7 +247,7 @@ def _gather_results(X, Ws, Hs=None, method='cluster_by_matching', n_components=N
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean, len(Ws)
+        return W, H, sil_score, sil_score_mean
     else:
         raise ValueError('Invalid method for _gather_results().')
 
