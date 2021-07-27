@@ -161,9 +161,12 @@ class OptimalK:
                     warnings.warn('Number of clusters output by cut_tree or fcluster is not equal to the specified number of clusters',
                                   UserWarning)
             Wk.append(_within_cluster_variation(d_square_form, cluster_membership))
-            if k == 1 or k == X.shape[1]:
+            if k == 1:
                 silscorek.append(np.nan)
-                silscorek_percluster[k] = np.nan
+                silscorek_percluster[k] = np.array([np.nan])
+            elif k == X.shape[1]:
+                silscorek.append(np.nan)
+                silscorek_percluster[k] = np.ones(k)*np.nan
             else:
                 silscore_per_sample = silhouette_samples(d_square_form, cluster_membership, metric='precomputed')
                 silscorek.append(np.mean(silscore_per_sample))
@@ -206,18 +209,22 @@ class OptimalK:
         candidates = self.ks[1:][(self.gap_statistic[1:] - self.Wk_ref_sd[1:] - self.gap_statistic[0:-1]) <= 0]
         self.k_gap_statistic_valid = candidates - 1
         if len(candidates) == 0:
-            self.k_gap_statistic = np.nan
+            warnings.warn('Based on the gap statistic, no k value is a valid candidate. The greatest k is chosen.',
+                          UserWarning)
+            self.k_gap_statistic = self.ks[-1]
         else:
             self.k_gap_statistic = candidates[0] - 1
         # Using Wk_log
         candidates = self.ks[1:][(self.gap_statistic_log[1:] - self.Wk_log_ref_sd[1:] - self.gap_statistic_log[0:-1]) <= 0]
         self.k_gap_statistic_log_valid = candidates - 1
         if len(candidates) == 0:
-            self.k_gap_statistic_log = np.nan
+            warnings.warn('Based on the log gap statistic, no k value is a valid candidate. The greatest k is chosen.',
+                          UserWarning)
+            self.k_gap_statistic_log = self.ks[-1]
         else:
             self.k_gap_statistic_log = candidates[0] - 1
         # Using sil score
-        self.k_silscore = self.ks[1:][np.argmax(self.silscorek[1:])]
+        self.k_silscore = self.ks[1:][np.nanargmax(self.silscorek[1:])]
         # Default
         self.k = self.k_gap_statistic
         self.k_valid = self.k_gap_statistic_valid
