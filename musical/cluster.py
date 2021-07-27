@@ -161,7 +161,7 @@ class OptimalK:
                     warnings.warn('Number of clusters output by cut_tree or fcluster is not equal to the specified number of clusters',
                                   UserWarning)
             Wk.append(_within_cluster_variation(d_square_form, cluster_membership))
-            if k == 1:
+            if k == 1 or k == X.shape[1]:
                 silscorek.append(np.nan)
                 silscorek_percluster[k] = np.nan
             else:
