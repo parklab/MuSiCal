@@ -224,7 +224,12 @@ class OptimalK:
         else:
             self.k_gap_statistic_log = candidates[0] - 1
         # Using sil score
-        self.k_silscore = self.ks[1:][np.nanargmax(self.silscorek[1:])]
+        if np.sum(np.isnan(self.silscorek[1:])) == len(self.silscorek[1:]):
+            warnings.warn('All silhouette scores are nan. The greatest k is chosen.',
+                          UserWarning)
+            self.k_silscore = self.ks[-1]
+        else:
+            self.k_silscore = self.ks[1:][np.nanargmax(self.silscorek[1:])]
         # Default
         self.k = self.k_gap_statistic
         self.k_valid = self.k_gap_statistic_valid
