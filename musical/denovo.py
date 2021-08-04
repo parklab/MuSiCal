@@ -488,6 +488,9 @@ def _select_n_components2(n_components_all, Ws_all, sil_score_all,
                 n_components_selected = n_components_consistent[-1]
             else:
                 n_components_selected = np.max(n_components_intersect)
+        if n_components_selected == n_components_all[-1]:
+            warnings.warn('Selected n_components is equal to the maximum n_components tested. The optimal n_components might be greater.',
+                          UserWarning)
 
     return n_components_selected, optimal_k_all, n_components_consistent, n_components_stable
 
