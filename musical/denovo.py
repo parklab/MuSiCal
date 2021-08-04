@@ -261,10 +261,10 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
 
 
 def _select_n_components(n_components_all, samplewise_reconstruction_errors_all, sil_score_all,
-                         n_replicates, n_replicates_after_filtering_all,
+                         n_replicates, n_replicates_after_filtering_all, Ws_all=None,
                          pthresh=0.05, sil_score_mean_thresh=0.8, sil_score_min_thresh=0.2,
                          n_replicates_filter_ratio_thresh=0.2,
-                         method='algorithm1'):
+                         method='algorithm1', nrefs=50, max_k_all=None):
     """Select the best n_components based on reconstruction error and stability.
 
     Parameters
@@ -303,7 +303,11 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     ----------
     1. Implement the method in SigProfilerExtractor.
     """
+    if method == 'consistency' and Ws_all is None:
+        raise ValueError('When method is consistency, Ws_all must be provided.')
+
     n_components_all = np.sort(n_components_all)
+
     ##### Stable solutions:
     n_components_stable = []
     for n_components in n_components_all:
@@ -313,11 +317,36 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
             n_components_stable.append(n_components)
     n_components_stable = np.array(n_components_stable)
 
+    ##### Consistent solutions
+    if method == 'consistency':
+        ## Default max_k_all
+        if max_k_all is None:
+            max_k_all = {n_components:np.max(n_components_all) + 5 for n_components in n_components_all}
+        ## First, get optimal k's
+        optimal_k_all = {}
+        for n_components in n_components_all:
+            if n_components == 1:
+                optimal_k_all[n_components] = 1
+            else:
+                Ws = np.concatenate(Ws_all[n_components], 1)
+                optimalK = OptimalK(Ws, max_k=max_k_all[n_components], nrefs=nrefs)
+                optimal_k_all[n_components] = optimalK.k
+        ## Select candidates
+        # Candidates are those n_components whose optimal k is equal to n_components
+        n_components_consistent = []
+        for n_components in n_components_all:
+            if n_components == optimal_k_all[n_components]:
+                n_components_consistent.append(n_components)
+        n_components_consistent = np.array(n_components_consistent)
+    else:
+        optimal_k_all = None
+        n_components_consistent = None
+
     ##### If only 1 n_components value provided.
     if len(n_components_all) == 1:
         warnings.warn('Only 1 n_components value is tested. Selecting this n_components value.',
                       UserWarning)
-        return n_components_all[0], n_components_stable, np.array([]), np.array([])
+        return n_components_all[0], optimal_k_all, n_components_consistent, n_components_stable, np.array([]), np.array([])
 
     ##### Calculate p-values:
     pvalue_all = np.array([
@@ -334,7 +363,35 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     ])
 
     ##### Select n_components
-    if method == 'algorithm1' or method == 'algorithm1.1':
+    if method == 'consistency':
+        if len(n_components_consistent) == 0 and len(n_components_stable) == 0:
+            # This won't usually happen
+            warnings.warn('No consistent n_components values are found and '
+                          'no n_components values with stable solutions are found. '
+                          'Selecting the smallest n_components tested.',
+                          UserWarning)
+            n_components_selected = n_components_all[0]
+        elif len(n_components_stable) == 0:
+            warnings.warn('No n_components values with stable solutions are found. '
+                          'Selecting the greatest consistent n_components value.',
+                          UserWarning)
+            n_components_selected = n_components_consistent[-1]
+        elif len(n_components_consistent) == 0:
+            # This won't usually happen
+            warnings.warn('No consistent n_components values are found. '
+                          'Selecting the greatest n_components with stable solutions.',
+                          UserWarning)
+            n_components_selected = n_components_stable[-1]
+        else:
+            n_components_intersect = np.array(list(set(n_components_consistent).intersection(n_components_stable)))
+            if len(n_components_intersect) == 0:
+                warnings.warn('Intersection of stable and consistent n_components is empty. '
+                              'Selecting the greatest consistent n_components value.',
+                              UserWarning)
+                n_components_selected = n_components_consistent[-1]
+            else:
+                n_components_selected = np.max(n_components_intersect)
+    elif method == 'algorithm1' or method == 'algorithm1.1':
         n_components_significant = []
         for p, p_tail, n_components in zip(pvalue_all, pvalue_tail_all, n_components_all[1:]):
             if p <= pthresh or p_tail <= pthresh:
@@ -411,88 +468,14 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
     else:
         raise ValueError('Invalid method for _select_n_components.')
 
-    return n_components_selected, n_components_stable, pvalue_all, pvalue_tail_all
-
-
-def _select_n_components2(n_components_all, Ws_all, sil_score_all,
-                          n_replicates, n_replicates_after_filtering_all,
-                          sil_score_mean_thresh=0.8, sil_score_min_thresh=0.2,
-                          n_replicates_filter_ratio_thresh=0.2, nrefs=50, max_k_all=None):
-    """
-    """
-    n_components_all = np.sort(n_components_all)
-
-    ##### Consistent solutions
-    ## Default max_k_all
-    if max_k_all is None:
-        max_k_all = {n_components:np.max(n_components_all) + 5 for n_components in n_components_all}
-    ## First, get optimal k's
-    optimal_k_all = {}
-    for n_components in n_components_all:
-        if n_components == 1:
-            optimal_k_all[n_components] = 1
-        else:
-            Ws = np.concatenate(Ws_all[n_components], 1)
-            optimalK = OptimalK(Ws, max_k=max_k_all[n_components], nrefs=nrefs)
-            optimal_k_all[n_components] = optimalK.k
-    ## Select candidates
-    # Candidates are those n_components whose optimal k is equal to n_components
-    n_components_consistent = []
-    for n_components in n_components_all:
-        if n_components == optimal_k_all[n_components]:
-            n_components_consistent.append(n_components)
-    n_components_consistent = np.array(n_components_consistent)
-
-    ##### Stable solutions
-    n_components_stable = []
-    for n_components in n_components_all:
-        if (np.mean(sil_score_all[n_components]) >= sil_score_mean_thresh and
-            np.min(sil_score_all[n_components]) >= sil_score_min_thresh and
-            n_replicates_after_filtering_all[n_components]/n_replicates >= n_replicates_filter_ratio_thresh):
-            n_components_stable.append(n_components)
-    n_components_stable = np.array(n_components_stable)
-
-
-    ##### Output
-    ### If only 1 n_components value provided.
-    if len(n_components_all) == 1:
-        warnings.warn('Only 1 n_components value is tested. Selecting this n_components value.',
+    if n_components_selected == n_components_all[-1]:
+        warnings.warn('Selected n_components is equal to the maximum n_components tested. The optimal n_components might be greater.',
                       UserWarning)
-        n_components_selected = n_components_all[0]
-    ### Else
-    else:
-        if len(n_components_consistent) == 0 and len(n_components_stable) == 0:
-            # This won't usually happen
-            warnings.warn('No consistent n_components values are found and '
-                          'no n_components values with stable solutions are found. '
-                          'Selecting the smallest n_components tested.',
-                          UserWarning)
-            n_components_selected = n_components_all[0]
-        elif len(n_components_stable) == 0:
-            warnings.warn('No n_components values with stable solutions are found. '
-                          'Selecting the greatest consistent n_components value.',
-                          UserWarning)
-            n_components_selected = n_components_consistent[-1]
-        elif len(n_components_consistent) == 0:
-            # This won't usually happen
-            warnings.warn('No consistent n_components values are found. '
-                          'Selecting the greatest n_components with stable solutions.',
-                          UserWarning)
-            n_components_selected = n_components_stable[-1]
-        else:
-            n_components_intersect = np.array(list(set(n_components_consistent).intersection(n_components_stable)))
-            if len(n_components_intersect) == 0:
-                warnings.warn('Intersection of stable and consistent n_components is empty. '
-                              'Selecting the greatest consistent n_components value.',
-                              UserWarning)
-                n_components_selected = n_components_consistent[-1]
-            else:
-                n_components_selected = np.max(n_components_intersect)
-        if n_components_selected == n_components_all[-1]:
-            warnings.warn('Selected n_components is equal to the maximum n_components tested. The optimal n_components might be greater.',
-                          UserWarning)
+    if n_components_selected == n_components_all[0] and n_components_selected > 1:
+        warnings.warn('Selected n_components is equal to the minimum n_components tested. The optimal n_components might be smaller.',
+                      UserWarning)
 
-    return n_components_selected, optimal_k_all, n_components_consistent, n_components_stable
+    return n_components_selected, optimal_k_all, n_components_consistent, n_components_stable, pvalue_all, pvalue_tail_all
 
 
 class DenovoSig:
@@ -860,31 +843,21 @@ class DenovoSig:
         }
 
         ### Select n_components
-        if self.select_method == 'consistency':
-            self.n_components, self.optimal_k_all, self.n_components_consistent, self.n_components_stable = _select_n_components2(
-                self.n_components_all,
-                Ws_filtered_all,
-                self.sil_score_all,
-                self.n_replicates,
-                self.n_replicates_after_filtering_all,
-                sil_score_mean_thresh=self.select_sil_score_mean_thresh,
-                sil_score_min_thresh=self.select_sil_score_min_thresh,
-                n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
-                nrefs=50,
-                max_k_all=None)
-        else:
-            self.n_components, self.n_components_stable, self.pvalue_all, self.pvalue_tail_all = _select_n_components(
-                self.n_components_all,
-                self.samplewise_reconstruction_errors_all,
-                self.sil_score_all,
-                self.n_replicates,
-                self.n_replicates_after_filtering_all,
-                pthresh=self.select_pthresh,
-                sil_score_mean_thresh=self.select_sil_score_mean_thresh,
-                sil_score_min_thresh=self.select_sil_score_min_thresh,
-                n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
-                method=self.select_method
-            )
+        self.n_components, self.optimal_k_all, self.n_components_consistent, self.n_components_stable, self.pvalue_all, self.pvalue_tail_all = _select_n_components(
+            self.n_components_all,
+            self.samplewise_reconstruction_errors_all,
+            self.sil_score_all,
+            self.n_replicates,
+            self.n_replicates_after_filtering_all,
+            Ws_all=Ws_filtered_all,
+            pthresh=self.select_pthresh,
+            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+            sil_score_min_thresh=self.select_sil_score_min_thresh,
+            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
+            method=self.select_method,
+            nrefs=50,
+            max_k_all=None
+        )
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
         self.sil_score = self.sil_score_all[self.n_components]
