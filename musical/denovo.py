@@ -796,9 +796,8 @@ class DenovoSig:
         ### Parameter validation
         if self.select_method == 'consistency':
             if self.cluster_method != 'hierarchical':
-                warnings.warn('Select_method is consistency. However, cluster_method is %r. Cluster_method is changed to hierarchical.' % self.cluster_method,
+                warnings.warn('Select_method is consistency. However, cluster_method is %r. It is better to use cluster_method = hierarchical when select_method is consistency.' % self.cluster_method,
                               UserWarning)
-                self.cluster_method = 'hierarchical'
         elif self.select_method in ['algorithm1', 'algorithm1.1', 'algorithm2', 'algorithm2.1']:
             pass
         else:
