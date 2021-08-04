@@ -525,10 +525,10 @@ class DenovoSig:
                  filter_thresh=0.05,
                  filter_percentile=90,
                  # Specific for result gathering:
-                 cluster_method='cluster_by_matching', # Note that this does not affect the result of the new n_components selection method.
+                 cluster_method='hierarchical',
                  # Specific for n_components selection:
-                 select_method='algorithm1',
-                 select_pthresh=0.05,
+                 select_method='consistency',
+                 select_pthresh=0.05, # Not used by the consistency method
                  select_sil_score_mean_thresh=0.8,
                  select_sil_score_min_thresh=0.2,
                  select_n_replicates_filter_ratio_thresh=0.2,
@@ -718,27 +718,14 @@ class DenovoSig:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                 return model
 
-    def fit(self, eng=None):
-        # 1. Run NMFs
-        # 2. Gather results within the same n_components
-        # 3. Select n_components
+    def _run_jobs(self, eng=None):
         self.W_raw_all = {} # Save all raw results
         self.H_raw_all = {} # Save all raw results
         self._W_raw_all = {}
         self._H_raw_all = {}
         self.lambda_tilde_all = {} # Save lambda_tilde's used for each mvNMF run
-        self.W_all = {}
-        self.H_all = {}
-        self.sil_score_all = {}
-        self.sil_score_mean_all = {}
-        self.reconstruction_error_all = {}
-        self.n_replicates_after_filtering_all = {}
-        self.retained_indices_after_filtering_all = {}
         start = time.time()
         for n_components in self.n_components_all:
-            ##################################################
-            ########### First run NMFs or mvNMFs #############
-            ##################################################
             if self.verbose:
                 print('Extracting signatures for n_components = ' + str(n_components) + '..................')
             if self.method == 'nmf':
@@ -800,9 +787,6 @@ class DenovoSig:
                     models = workers.map(self._job, parameters)
                     workers.close()
                     workers.join()
-            ##############################################
-            ####### Gather results from all models #######
-            ##############################################
             self.W_raw_all[n_components] = [model.W for model in models] # Save all raw results
             self.H_raw_all[n_components] = [model.H for model in models] # Save all raw results
             self._W_raw_all[n_components] = [model._W for model in models]
@@ -817,6 +801,36 @@ class DenovoSig:
                     self.lambda_tilde_all[n_components] = [lambda_tilde]*self.n_replicates
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     self.lambda_tilde_all[n_components] = [self.mvnmf_lambda_tilde_grid]*self.n_replicates
+            if self.verbose:
+                print('Time elapsed: %.3g seconds.' % (time.time() - start))
+        return self
+
+    def postprocess(self):
+        """Filter and gather raw results, and then select the best n_components"""
+        ### Parameter validation
+        if self.select_method == 'consistency':
+            if self.cluster_method != 'hierarchical':
+                warnings.warn('Select_method is consistency. However, cluster_method is %r. Cluster_method is changed to hierarchical.' % self.cluster_method,
+                              UserWarning)
+                self.cluster_method = 'hierarchical'
+        elif self.select_method in ['algorithm1', 'algorithm1.1', 'algorithm2', 'algorithm2.1']:
+            pass
+        else:
+            raise ValueError('Invalid select_method.')
+        if self.cluster_method not in ['hierarchical', 'cluster_by_matching', 'matching']:
+            raise ValueError('Invalid cluster_method.')
+
+        ### Filter and gather results
+        self.W_all = {}
+        self.H_all = {}
+        Ws_filtered_all = {}
+        self.sil_score_all = {}
+        self.sil_score_mean_all = {}
+        self.reconstruction_error_all = {}
+        self.n_replicates_after_filtering_all = {}
+        self.retained_indices_after_filtering_all = {}
+        self.n_support_all = {}
+        for n_components in self.n_components_all:
             # Filter
             if self.filter:
                 Ws, Hs, retained_indices = _filter_results(
@@ -829,86 +843,57 @@ class DenovoSig:
                 retained_indices = np.arange(0, self.n_replicates)
             self.retained_indices_after_filtering_all[n_components] = retained_indices
             self.n_replicates_after_filtering_all[n_components] = len(Ws)
+            Ws_filtered_all[n_components] = Ws
             # Gather
-            W, H, sil_score, sil_score_mean = _gather_results(self.X, Ws, method=self.cluster_method)
+            W, H, sil_score, sil_score_mean, n_support = _gather_results(self.X, Ws, method=self.cluster_method)
             self.W_all[n_components] = W
             self.H_all[n_components] = H
             self.sil_score_all[n_components] = sil_score
             self.sil_score_mean_all[n_components] = sil_score_mean
+            self.n_support_all[n_components] = n_support
             self.reconstruction_error_all[n_components] = beta_divergence(self.X, W @ H, beta=1, square_root=False)
-            if self.verbose:
-                print('Time elapsed: %.3g seconds.' % (time.time() - start))
-        ##############################################
-        ############ Select n_components #############
-        ##############################################
         self.samplewise_reconstruction_errors_all = {
             n_components: _samplewise_error(self.X, self.W_all[n_components] @ self.H_all[n_components]) for n_components in self.n_components_all
         }
-        self.n_components, self.n_components_stable, self.pvalue_all, self.pvalue_tail_all = _select_n_components(
-            self.n_components_all,
-            self.samplewise_reconstruction_errors_all,
-            self.sil_score_all,
-            self.n_replicates,
-            self.n_replicates_after_filtering_all,
-            pthresh=self.select_pthresh,
-            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
-            sil_score_min_thresh=self.select_sil_score_min_thresh,
-            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
-            method=self.select_method
-        )
+
+        ### Select n_components
+        if self.select_method == 'consistency':
+            self.n_components, self.optimal_k_all, self.n_components_consistent, self.n_components_stable = _select_n_components2(
+                self.n_components_all,
+                Ws_filtered_all,
+                self.sil_score_all,
+                self.n_replicates,
+                self.n_replicates_after_filtering_all,
+                sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+                sil_score_min_thresh=self.select_sil_score_min_thresh,
+                n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
+                nrefs=50,
+                max_k_all=None)
+        else:
+            self.n_components, self.n_components_stable, self.pvalue_all, self.pvalue_tail_all = _select_n_components(
+                self.n_components_all,
+                self.samplewise_reconstruction_errors_all,
+                self.sil_score_all,
+                self.n_replicates,
+                self.n_replicates_after_filtering_all,
+                pthresh=self.select_pthresh,
+                sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+                sil_score_min_thresh=self.select_sil_score_min_thresh,
+                n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
+                method=self.select_method
+            )
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
         self.sil_score = self.sil_score_all[self.n_components]
         self.sil_score_mean = self.sil_score_mean_all[self.n_components]
         self.reconstruction_error = self.reconstruction_error_all[self.n_components]
         self.samplewise_reconstruction_errors = self.samplewise_reconstruction_errors_all[self.n_components]
+        self.n_support = self.n_support_all[self.n_components]
+        return self
 
-        self.n_components1 = self.n_components
-
-        self.n_components1p1, _, _, _ = _select_n_components(
-            self.n_components_all,
-            self.samplewise_reconstruction_errors_all,
-            self.sil_score_all,
-            self.n_replicates,
-            self.n_replicates_after_filtering_all,
-            pthresh=self.select_pthresh,
-            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
-            sil_score_min_thresh=self.select_sil_score_min_thresh,
-            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
-            method='algorithm1.1'
-        )
-
-        self.n_components2, _, _, _ = _select_n_components(
-            self.n_components_all,
-            self.samplewise_reconstruction_errors_all,
-            self.sil_score_all,
-            self.n_replicates,
-            self.n_replicates_after_filtering_all,
-            pthresh=self.select_pthresh,
-            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
-            sil_score_min_thresh=self.select_sil_score_min_thresh,
-            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
-            method='algorithm2'
-        )
-
-        self.n_components2p1, _, _, _ = _select_n_components(
-            self.n_components_all,
-            self.samplewise_reconstruction_errors_all,
-            self.sil_score_all,
-            self.n_replicates,
-            self.n_replicates_after_filtering_all,
-            pthresh=self.select_pthresh,
-            sil_score_mean_thresh=self.select_sil_score_mean_thresh,
-            sil_score_min_thresh=self.select_sil_score_min_thresh,
-            n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
-            method='algorithm2.1'
-        )
-
-        if self.n_components != self.n_components2:
-            warnings.warn('The best n_components selected by algorithm1 and algorithm2 are different. '
-                          'One should look at the results and manually select the best n_components.',
-                          UserWarning)
-
+    def fit(self, eng=None):
+        self._run_jobs(eng=eng)
+        self.postprocess()
         return self
 
     def set_params(self,
