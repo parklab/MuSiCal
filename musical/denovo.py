@@ -89,7 +89,8 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
         # 20210719 - We'll still use 1. We'll look at n_replicates_after_filtering in _select_n_components in addition.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean
+        n_support = np.ones(n_components, dtype=int)
+        return W, H, sil_score, sil_score_mean, n_support
     ### If more than one solutions:
     ### If there is only 1 signature:
     if n_components == 1:
@@ -99,7 +100,8 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
         # When there is only 1 cluster, we also define the sil_score to be 1.
         sil_score = np.ones(n_components)
         sil_score_mean = 1.0
-        return W, H, sil_score, sil_score_mean
+        n_support = np.ones(n_components, dtype=int)*len(Ws)
+        return W, H, sil_score, sil_score_mean, n_support
     ### If there are more than 1 signatures
     if method == 'hierarchical':
         sigs = np.concatenate(Ws, axis=1)
@@ -115,8 +117,11 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
                 warnings.warn('Number of clusters output by cut_tree or fcluster is not equal to the specified number of clusters',
                               UserWarning)
         W = []
+        n_support = []
         for i in range(0, n_components):
             W.append(np.mean(sigs[:, cluster_membership == i + 1], 1))
+            n_support.append(np.sum(cluster_membership == (i + 1)))
+        n_support = np.array(n_support)
         W = np.array(W).T
         W = normalize(W, norm='l1', axis=0)
         H = nnls(X, W)
@@ -127,7 +132,7 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean
+        return W, H, sil_score, sil_score_mean, n_support
     elif method == 'matching':
         Ws_matched = [Ws[0]]
         for W in Ws[1:]:
@@ -151,7 +156,8 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean
+        n_support = np.ones(n_components, dtype=int)*len(Ws)
+        return W, H, sil_score, sil_score_mean, n_support
     elif method == 'cluster_by_matching':
         # pubmed: 32118208
         ### First, get all matchings
@@ -248,7 +254,8 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
             sil_score.append(np.mean(samplewise_sil_score[cluster_membership == i + 1]))
         sil_score = np.array(sil_score)
         sil_score_mean = np.mean(samplewise_sil_score)
-        return W, H, sil_score, sil_score_mean
+        n_support = np.ones(n_components, dtype=int)*len(Ws)
+        return W, H, sil_score, sil_score_mean, n_support
     else:
         raise ValueError('Invalid method for _gather_results().')
 
@@ -414,7 +421,7 @@ def _select_n_components2(n_components_all, Ws_all, sil_score_all,
     """
     """
     n_components_all = np.sort(n_components_all)
-    
+
     ##### Consistent solutions
     ## Default max_k_all
     if max_k_all is None:
