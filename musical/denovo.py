@@ -12,6 +12,12 @@ import multiprocessing
 import os
 import pandas as pd
 from operator import itemgetter
+import seaborn as sns
+import pandas as pd
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.ticker as ticker
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
@@ -870,6 +876,122 @@ class DenovoSig:
         self._run_jobs(eng=eng)
         self.postprocess()
         return self
+
+    def plot_selection(self, title=None, plot_pvalues=True, outfile=None, figsize=None):
+        sns.set_style('ticks')
+        ##### Collect data
+        sil_score_mean = np.array([self.sil_score_mean_all[n_components] for n_components in self.n_components_all])
+        mean_sil_score = np.array([np.mean(self.sil_score_all[n_components]) for n_components in self.n_components_all])
+        min_sil_score = np.array([np.min(self.sil_score_all[n_components]) for n_components in self.n_components_all])
+        reconstruction_error = np.array([self.reconstruction_error_all[n_components] for n_components in self.n_components_all])
+        pvalues = self.pvalue_all
+        pvalues_tail = self.pvalue_tail_all
+        if self.optimal_k_all is not None:
+            optimal_k = np.array([self.optimal_k_all[n_components] for n_components in self.n_components_all])
+        sil_score_all_df = pd.DataFrame.from_dict(self.sil_score_all, orient='index')
+        sil_score_all_df.columns=[i for i in range(1, sil_score_all_df.shape[1] + 1)]
+
+        ##### Plot
+        if figsize is None:
+            if self.optimal_k_all is None:
+                figsize = (16, 4)
+            else:
+                figsize = (21, 4)
+        ## Set up the axes with gridspec
+        fig = plt.figure(figsize=figsize)
+        if self.optimal_k_all is None:
+            grid = plt.GridSpec(1, 16, hspace=0.5, wspace=4)
+        else:
+            grid = plt.GridSpec(1, 21, hspace=0.5, wspace=4)
+        host = fig.add_subplot(grid[0, 0:8])
+        plt2 = host.twinx()
+        if plot_pvalues:
+            plt3 = host.twinx()
+        heatmap = fig.add_subplot(grid[0, 10:16])
+        if self.optimal_k_all is not None:
+            kplot = fig.add_subplot(grid[0, 16:21])
+
+        ## Generate line plot
+        host.set_xlabel("n components")
+        host.set_ylabel("Mean silhouette score")
+        plt2.set_ylabel("Reconstruction error")
+        if plot_pvalues:
+            plt3.set_ylabel("p-value")
+
+        color1 = '#E94E1B'
+        color2 = '#1D71B8'
+        if plot_pvalues:
+            color3 = '#2FAC66'
+
+        p1, = host.plot(self.n_components_all, sil_score_mean,
+                        color=color1, label="Mean silhouette score",
+                        linestyle='--', marker='o')
+        p2, = plt2.plot(self.n_components_all, reconstruction_error,
+                        color=color2, label="Reconstruction error",
+                        linestyle=':', marker='D')
+        if plot_pvalues:
+            p3, = plt3.plot(self.n_components_all[1:], pvalues,
+                            color=color3, label="p-value",
+                            linestyle='-.', marker='+', alpha=0.5)
+            p3_, = plt3.plot(self.n_components_all[1:], pvalues_tail,
+                             color=color3, label="p-value (tail)",
+                             linestyle='-.', marker='.', alpha=0.5)
+
+        if plot_pvalues:
+            lns = [p1, p2, p3, p3_]
+        else:
+            lns = [p1, p2]
+        host.legend(handles=lns, ncol=2, loc="lower center", bbox_to_anchor=(0.5, -0.5))
+
+        host.yaxis.label.set_color(p1.get_color())
+        plt2.yaxis.label.set_color(p2.get_color())
+
+        if plot_pvalues:
+            plt3.yaxis.label.set_color(p3.get_color())
+
+        #Adjust p-value spine position
+        if plot_pvalues:
+            plt3.spines['right'].set_position(('outward', 65))
+
+        #Set ticks interval to 1
+        host.xaxis.set_major_locator(ticker.MultipleLocator(1))
+
+        #Higlight suggested signature
+        host.axvspan(self.n_components - 0.25, self.n_components + 0.25, color='grey', alpha=0.3)
+
+        #Set title
+        if title is not None:
+            host.set_title('Silhouette scores and reconstruction errors for ' + title)
+        else:
+            host.set_title('Silhouette scores and reconstruction errors')
+
+        ## Generate heatmap
+        heatmap = sns.heatmap(sil_score_all_df, vmin=0, vmax=1, cmap="YlGnBu", ax=heatmap, square=True)
+        heatmap.set_xlabel("Signatures")
+        heatmap.set_ylabel("n components")
+
+        if title is not None:
+            heatmap.set_title('Silhouette scores for ' + title)
+        else:
+            heatmap.set_title('Silhouette scores')
+
+        ## Generate kplot
+        if self.optimal_k_all is not None:
+            kplot.plot(self.n_components_all, optimal_k,
+                       color='k', label="Optimal k",
+                       linestyle='--', marker='o')
+            kplot.set_xlabel("n components")
+            kplot.set_ylabel("Optimal k")
+            if title is not None:
+                kplot.set_title("Consistency test for " + title)
+            else:
+                kplot.set_title("Consistency test")
+            kplot.xaxis.set_major_locator(ticker.MultipleLocator(1))
+            kplot.yaxis.set_major_locator(ticker.MultipleLocator(1))
+            kplot.axvspan(self.n_components - 0.25, self.n_components + 0.25, color='grey', alpha=0.3)
+
+        if outfile is not None:
+            plt.savefig(outfile, bbox_inches='tight')
 
     def set_params(self,
                    use_catalog = None,
