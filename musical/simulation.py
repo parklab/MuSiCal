@@ -77,11 +77,11 @@ def simulate_LDA(alpha, n_samples, n_mutations, n_components, n_features=96, W=N
 
     ##### Get pd dataframes
     if samples is None:
-        samples = ['Sample' + str(i) for i in range(0, n_samples)]
+        samples = ['Sample' + str(i) for i in range(1, n_samples+1)]
     if features is None:
-        features = ['Feature' + str(i) for i in range(0, n_features)]
+        features = ['Feature' + str(i) for i in range(1, n_features+1)]
     if sigs is None:
-        sigs = ['Sig' + str(i) for i in range(0, n_components)]
+        sigs = ['Sig' + str(i) for i in range(1, n_components+1)]
     X = pd.DataFrame(X, columns=samples, index=features)
     W = pd.DataFrame(W, columns=sigs, index=features)
     H = pd.DataFrame(H, columns=samples, index=sigs)
