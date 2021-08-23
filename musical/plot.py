@@ -9,7 +9,7 @@ import matplotlib.gridspec as gridspec
 import matplotlib.ticker as ticker
 from sklearn.preprocessing import normalize
 
-from .utils import snv_types_96_str
+from .utils import snv_types_96_str, indel_types_83_str
 
 ##################
 # Color palettes #
@@ -53,6 +53,30 @@ colorPaletteTrinucleotides = [(0.33, 0.75, 0.98),
                               (0.51, 0.79, 0.24),
                               (0.89, 0.67, 0.72)]
 
+#
+colorPaletteIndel83 = [
+    '#FCBD6F', # 1bp Del C
+    '#FD8001', # 1bp Del T
+    '#B0DC8B', # 1bp Ins C
+    '#35A02E', # 1bp Ins T
+    '#FCC9B4', # 2bp Del Repeats
+    '#FC896B', # 3bp Del Repeats
+    '#F04432', # 4bp Del Repeats
+    '#BC1A1A', # 5+ bp Del Repeats
+    '#CFE0F0', # 2bp Ins Repeats
+    '#94C3DF', # 3bp Ins Repeats
+    '#4A98C8', # 4bp Ins Repeats
+    '#1665AA', # 5+ bp Ins Repeats
+    '#E1E0ED', # 2bp Del MH
+    '#B5B5D8', # 3bp Del MH
+    '#8683BC', # 4bp Del MH
+    '#624099', # 5+bp Del MH
+]
+colorsIndel83 = []
+for color in colorPaletteIndel83[0:12]:
+    colorsIndel83.extend([color]*6)
+colorsIndel83.extend([colorPaletteIndel83[12]] + [colorPaletteIndel83[13]]*2 + [colorPaletteIndel83[14]]*3 + [colorPaletteIndel83[15]]*5)
+
 ##################
 # Plot functions #
 ##################
@@ -75,7 +99,7 @@ def _set_size(w, h, ax=None):
 def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
                 xlabel="", ylabel="", tick_fontsize=12, label_fontsize=14,
                 colors=None, ylim=None, xticklabels=False, xticks=True, yticks=None, rotation=90, ha="center",
-                outfile=None, fix_size=False):
+                outfile=None, fix_size=False, sig_type='SBS'):
     """Bar plot for signatures.
 
     sig can be a single n_features dimensional vector, in which case a single plot will
@@ -98,13 +122,23 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
     n_features, n_components = sig.shape
     if norm:
         sig = normalize(sig, axis=0, norm='l1')
+    if sig_type == 'SBS':
+        if n_features != 96:
+            raise ValueError('sig_type is set to SBS but the number of features is not equal to 96.')
+    elif sig_type == 'Indel83':
+        if n_features != 83:
+            raise ValueError('sig_type is set to Indel83 but the number of features is not equal to 83.')
+    else:
+        pass
 
     # Colors
     if colors is None:
-        if n_features == 96:
+        if sig_type == 'SBS':
             colors = []
             for i in range(0, 6):
                 colors.extend([colorPaletteTrinucleotides[i]]*16)
+        elif sig_type == 'Indel83':
+            colors = colorsIndel83
         else:
             colors = ['gray']*n_features
     else:
@@ -118,15 +152,19 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
 
     # x tick labels
     if xticklabels is None:
-        if n_features == 96:
+        if sig_type == 'SBS':
             xticklabels = snv_types_96_str
+        elif sig_type == 'Indel83':
+            xticklabels = indel_types_83_str
         else:
             xticklabels = list(map(str, range(1, n_features + 1)))
     else:
         if type(xticklabels) is bool:
             if xticklabels:
-                if n_features == 96:
+                if sig_type == 'SBS':
                     xticklabels = snv_types_96_str
+                elif sig_type == 'Indel83':
+                    xticklabels = indel_types_83_str
                 else:
                     xticklabels = list(map(str, range(1, n_features + 1)))
             else:
