@@ -210,12 +210,15 @@ def nnls_sparse(x, W, method='llh',
                 likelihood_ratios = []
                 xs = []
                 for ind in inds_current:
-                    x_nnls2 = W[:, inds_current[inds_current != ind]] @ sp.optimize.nnls(W[:, inds_current[inds_current != ind]], x)[0]
+                    inds_other = np.array([i for i in np.arange(0, n_components) if i != ind])
+                    x_nnls2 = W[:, inds_other] @ sp.optimize.nnls(W[:, inds_other], x)[0]
+                    # to make the selection among signatures with non-zero exposure exchange above two lines with the line below
+                    # x_nnls2 = W[:, inds_current[inds_current != ind]] @ sp.optimize.nnls(W[:, inds_current[inds_current != ind]], x)[0]                                                                                                        
                     xs.append(x_nnls2)
                     ps = np.array([x_nnls/np.sum(x_nnls), x_nnls2/np.sum(x_nnls2)])
                     lhs = _lh_multinomial(x, ps)
                     likelihood_ratios.append(lhs[0])
-                #print(inds_current, likelihood_ratios)
+                                              
                 if np.min(likelihood_ratios) > llh_thresh:
                     break
                 else:
@@ -227,8 +230,18 @@ def nnls_sparse(x, W, method='llh',
             inds_zero = np.array([i for i in inds_all if i not in inds_sig])
         if len(inds_zero) > 0:
             h[inds_zero] = 0.
-        h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
+        # if frac_thresh and exp_thresh are set to 0 then the changes below have no effect
+        if (frac_thresh == 0 and exp_thresh == 0) or inds_sig.size == 1:
+            h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
+        else:
+            h[inds_sig] = nnls_sparse(x = x, W= W[:, inds_sig], method = 'cut',
+                                      frac_thresh_base = frac_thresh_base,
+                                      frac_thresh_keep = frac_thresh_keep,
+                                      frac_thresh = frac_thresh,
+                                      llh_thresh = llh_thresh,
+                                      exp_thresh = exp_thresh)
         h_fracs = h/n
+
 
     elif method == 'cut_naive':
         h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(x, h, W, delta = frac_thresh)
