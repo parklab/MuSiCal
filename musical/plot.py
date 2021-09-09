@@ -9,7 +9,7 @@ import matplotlib.gridspec as gridspec
 import matplotlib.ticker as ticker
 from sklearn.preprocessing import normalize
 
-from .utils import snv_types_96_str
+from .utils import snv_types_96_str, indel_types_83_str
 
 ##################
 # Color palettes #
@@ -53,6 +53,30 @@ colorPaletteTrinucleotides = [(0.33, 0.75, 0.98),
                               (0.51, 0.79, 0.24),
                               (0.89, 0.67, 0.72)]
 
+#
+colorPaletteIndel83 = [
+    '#FCBD6F', # 1bp Del C
+    '#FD8001', # 1bp Del T
+    '#B0DC8B', # 1bp Ins C
+    '#35A02E', # 1bp Ins T
+    '#FCC9B4', # 2bp Del Repeats
+    '#FC896B', # 3bp Del Repeats
+    '#F04432', # 4bp Del Repeats
+    '#BC1A1A', # 5+ bp Del Repeats
+    '#CFE0F0', # 2bp Ins Repeats
+    '#94C3DF', # 3bp Ins Repeats
+    '#4A98C8', # 4bp Ins Repeats
+    '#1665AA', # 5+ bp Ins Repeats
+    '#E1E0ED', # 2bp Del MH
+    '#B5B5D8', # 3bp Del MH
+    '#8683BC', # 4bp Del MH
+    '#624099', # 5+bp Del MH
+]
+colorsIndel83 = []
+for color in colorPaletteIndel83[0:12]:
+    colorsIndel83.extend([color]*6)
+colorsIndel83.extend([colorPaletteIndel83[12]] + [colorPaletteIndel83[13]]*2 + [colorPaletteIndel83[14]]*3 + [colorPaletteIndel83[15]]*5)
+
 ##################
 # Plot functions #
 ##################
@@ -72,10 +96,10 @@ def _set_size(w, h, ax=None):
     ax.figure.set_size_inches(figw, figh)
 
 
-def sigplot_bar(sig, norm=True, figsize=None, title=None,
+def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
                 xlabel="", ylabel="", tick_fontsize=12, label_fontsize=14,
-                colors=None, ylim=None, xticklabels=False, rotation=90, ha="center",
-                outfile=None):
+                colors=None, ylim=None, xticklabels=False, xticks=True, yticks=None, rotation=90, ha="center",
+                outfile=None, fix_size=False, sig_type='SBS'):
     """Bar plot for signatures.
 
     sig can be a single n_features dimensional vector, in which case a single plot will
@@ -98,13 +122,23 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None,
     n_features, n_components = sig.shape
     if norm:
         sig = normalize(sig, axis=0, norm='l1')
+    if sig_type == 'SBS':
+        if n_features != 96:
+            raise ValueError('sig_type is set to SBS but the number of features is not equal to 96.')
+    elif sig_type == 'Indel83':
+        if n_features != 83:
+            raise ValueError('sig_type is set to Indel83 but the number of features is not equal to 83.')
+    else:
+        pass
 
     # Colors
     if colors is None:
-        if n_features == 96:
+        if sig_type == 'SBS':
             colors = []
             for i in range(0, 6):
                 colors.extend([colorPaletteTrinucleotides[i]]*16)
+        elif sig_type == 'Indel83':
+            colors = colorsIndel83
         else:
             colors = ['gray']*n_features
     else:
@@ -118,15 +152,19 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None,
 
     # x tick labels
     if xticklabels is None:
-        if n_features == 96:
+        if sig_type == 'SBS':
             xticklabels = snv_types_96_str
+        elif sig_type == 'Indel83':
+            xticklabels = indel_types_83_str
         else:
             xticklabels = list(map(str, range(1, n_features + 1)))
     else:
         if type(xticklabels) is bool:
             if xticklabels:
-                if n_features == 96:
+                if sig_type == 'SBS':
                     xticklabels = snv_types_96_str
+                elif sig_type == 'Indel83':
+                    xticklabels = indel_types_83_str
                 else:
                     xticklabels = list(map(str, range(1, n_features + 1)))
             else:
@@ -173,34 +211,83 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None,
             raise TypeError('ylim must be tuple, list of tuples, or None.')
 
     # Plot
-    mpl.rcParams['pdf.fonttype'] = 42
-    fig = plt.figure()
-    fig.set_size_inches(figsize[0], figsize[1])
-    sns.set_context('notebook')
-    sns.set_style('ticks')
-    plt.rc('xtick', labelsize=tick_fontsize)
-    plt.rc('ytick', labelsize=tick_fontsize)
-    for sig_index in range(0, n_components):
-        y = sig[:, sig_index]
-        x = np.arange(0, n_features)
-        subfig = fig.add_subplot(n_components, 1, sig_index + 1)
-        subfig.set_title(title[sig_index], fontsize=label_fontsize)
-        subfig.spines['right'].set_visible(False)
-        subfig.spines['top'].set_visible(False)
-        subfig.spines['bottom'].set_color('k')
-        subfig.spines['left'].set_color('k')
-        for tick in subfig.get_xticklabels():
-            tick.set_fontname('monospace')
-        for tick in subfig.get_yticklabels():
-            tick.set_fontname('Arial')
-        subfig.set_xlabel(xlabel, fontsize=label_fontsize)
-        subfig.set_ylabel(ylabel, fontsize=label_fontsize)
-        plt.bar(x, y, color=colors)
+    if fix_size:
+        mpl.rcParams['pdf.fonttype'] = 42
+        fig = plt.figure()
+        #fig.set_size_inches(figsize[0], figsize[1])
+        sns.set_context('notebook')
+        sns.set_style('ticks')
+        plt.rc('xtick', labelsize=tick_fontsize)
+        plt.rc('ytick', labelsize=tick_fontsize)
+        for sig_index in range(0, n_components):
+            y = sig[:, sig_index]
+            x = np.arange(0, n_features)
+            subfig = fig.add_subplot(n_components, 1, sig_index + 1)
+            subfig.set_title(title[sig_index], fontsize=label_fontsize)
+            subfig.spines['right'].set_visible(False)
+            subfig.spines['top'].set_visible(False)
+            subfig.spines['bottom'].set_color('k')
+            subfig.spines['left'].set_color('k')
+            _set_size(figsize[0], figsize[1], ax=subfig)
+            for tick in subfig.get_xticklabels():
+                tick.set_fontname('monospace')
+            for tick in subfig.get_yticklabels():
+                tick.set_fontname('Arial')
+            subfig.set_xlabel(xlabel, fontsize=label_fontsize)
+            subfig.set_ylabel(ylabel, fontsize=label_fontsize)
+            plt.bar(x, y, width=width, linewidth=0, color=colors)
 
-        plt.xticks(x, xticklabels, fontsize=tick_fontsize, rotation=rotation, ha=ha)
-        plt.xlim(-1, n_features)
-        if ylim is not None:
-            plt.ylim(ylim[sig_index])
+            if xticks:
+                plt.xticks(x, xticklabels, fontsize=tick_fontsize, rotation=rotation, ha=ha)
+            else:
+                subfig.set_xticks([])
+            if yticks is not None:
+                if type(yticks) is bool:
+                    if not yticks:
+                        subfig.set_yticks([])
+                else:
+                    subfig.set_yticks(yticks)
+            plt.xlim(-1, n_features)
+            if ylim is not None:
+                plt.ylim(ylim[sig_index])
+    else:
+        mpl.rcParams['pdf.fonttype'] = 42
+        fig = plt.figure()
+        fig.set_size_inches(figsize[0], figsize[1])
+        sns.set_context('notebook')
+        sns.set_style('ticks')
+        plt.rc('xtick', labelsize=tick_fontsize)
+        plt.rc('ytick', labelsize=tick_fontsize)
+        for sig_index in range(0, n_components):
+            y = sig[:, sig_index]
+            x = np.arange(0, n_features)
+            subfig = fig.add_subplot(n_components, 1, sig_index + 1)
+            subfig.set_title(title[sig_index], fontsize=label_fontsize)
+            subfig.spines['right'].set_visible(False)
+            subfig.spines['top'].set_visible(False)
+            subfig.spines['bottom'].set_color('k')
+            subfig.spines['left'].set_color('k')
+            for tick in subfig.get_xticklabels():
+                tick.set_fontname('monospace')
+            for tick in subfig.get_yticklabels():
+                tick.set_fontname('Arial')
+            subfig.set_xlabel(xlabel, fontsize=label_fontsize)
+            subfig.set_ylabel(ylabel, fontsize=label_fontsize)
+            plt.bar(x, y, width=width, linewidth=0, color=colors)
+
+            if xticks:
+                plt.xticks(x, xticklabels, fontsize=tick_fontsize, rotation=rotation, ha=ha)
+            else:
+                subfig.set_xticks([])
+            if yticks is not None:
+                if type(yticks) is bool:
+                    if not yticks:
+                        subfig.set_yticks([])
+                else:
+                    subfig.set_yticks(yticks)
+            plt.xlim(-1, n_features)
+            if ylim is not None:
+                plt.ylim(ylim[sig_index])
     plt.tight_layout()
 
     if outfile is not None:
@@ -226,7 +313,7 @@ def plot_silhouettes(model,  title_tag=None, plotpvalues=True,
     #Convert dictionaries of all mean silhouette scores and all reconstruction errors to arrays
     sil_score_mean_array = np.array(list(model.sil_score_mean_all.values()))
     reconstruction_error_array = np.array(list(model.reconstruction_error_all.values()))
-    
+
     #Create DF from silhouette scores for heatmap and rename columns
     sil_score_all_df = pd.DataFrame.from_dict(model.sil_score_all,orient = 'index')
     sil_score_all_df.columns=[i for i in range(1, sil_score_all_df.shape[1] + 1)]
@@ -241,10 +328,10 @@ def plot_silhouettes(model,  title_tag=None, plotpvalues=True,
 
     if plotpvalues:
         plt3 = host.twinx()
-    
+
     heat_map = fig.add_subplot(grid[0, 3:])
 
-    #Generate line plot  
+    #Generate line plot
     host.set_xlabel("n components")
     host.set_ylabel("Mean silhouette score")
     plt2.set_ylabel("Reconstruction error")
@@ -269,7 +356,7 @@ def plot_silhouettes(model,  title_tag=None, plotpvalues=True,
 
     host.yaxis.label.set_color(p1.get_color())
     plt2.yaxis.label.set_color(p2.get_color())
-    
+
     if plotpvalues:
         plt3.yaxis.label.set_color(p3.get_color())
 
@@ -279,10 +366,10 @@ def plot_silhouettes(model,  title_tag=None, plotpvalues=True,
 
     #Set ticks interval to 1
     host.xaxis.set_major_locator(ticker.MultipleLocator(1))
-    
+
     #Higlight suggested signature
     host.axvspan(model.n_components-0.25, model.n_components+0.25, color='grey', alpha=0.3)
-    
+
     #Set title
     if title_tag is not None:
         host.set_title('Silhouette scores and reconstruction errors for '+title_tag)
@@ -293,7 +380,7 @@ def plot_silhouettes(model,  title_tag=None, plotpvalues=True,
     heat_map = sns.heatmap(sil_score_all_df,vmin=0, vmax=1, cmap="YlGnBu")
     heat_map.set_xlabel("Signatures")
     heat_map.set_ylabel("n components")
-    
+
     if title_tag is not None:
         heat_map.set_title('Silhouette scores for '+title_tag)
     else:

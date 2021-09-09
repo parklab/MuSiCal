@@ -7,7 +7,9 @@ from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
 from .denovo import DenovoSig
 from .catalog import load_catalog
-from .preprocessing import remove_samples_based_on_gini, remove_distinct_cluster
+from .preprocessing import remove_samples_based_on_gini, identify_distinct_cluster
+from .cluster import OptimalK
+from .simulation import simulate_LDA
 
 __all__ = ['beta_divergence',
            'sigplot_bar',
@@ -18,4 +20,6 @@ __all__ = ['beta_divergence',
            'DenovoSig',
            'load_catalog',
            'remove_samples_based_on_gini',
-           'remove_distinct_cluster']
+           'identify_distinct_cluster',
+           'OptimalK',
+           'simulate_LDA']

@@ -8,6 +8,7 @@ import itertools
 import scipy as sp
 import scipy.stats as stats
 from operator import itemgetter
+from sklearn.preprocessing import normalize
 
 ##################
 # Useful globals #
@@ -66,6 +67,93 @@ snv_types_96_list = ([["C>A", item] for item in trinucleotides_C] +
                      [["T>C", item] for item in trinucleotides_T] +
                      [["T>G", item] for item in trinucleotides_T])
 
+# Need to update
+indel_types_83_str = [
+ 'DEL.C.1.1',
+ 'DEL.C.1.2',
+ 'DEL.C.1.3',
+ 'DEL.C.1.4',
+ 'DEL.C.1.5',
+ 'DEL.C.1.6+',
+ 'DEL.T.1.1',
+ 'DEL.T.1.2',
+ 'DEL.T.1.3',
+ 'DEL.T.1.4',
+ 'DEL.T.1.5',
+ 'DEL.T.1.6+',
+ 'INS.C.1.0',
+ 'INS.C.1.1',
+ 'INS.C.1.2',
+ 'INS.C.1.3',
+ 'INS.C.1.4',
+ 'INS.C.1.5+',
+ 'INS.T.1.0',
+ 'INS.T.1.1',
+ 'INS.T.1.2',
+ 'INS.T.1.3',
+ 'INS.T.1.4',
+ 'INS.T.1.5+',
+ 'DEL.repeats.2.1',
+ 'DEL.repeats.2.2',
+ 'DEL.repeats.2.3',
+ 'DEL.repeats.2.4',
+ 'DEL.repeats.2.5',
+ 'DEL.repeats.2.6+',
+ 'DEL.repeats.3.1',
+ 'DEL.repeats.3.2',
+ 'DEL.repeats.3.3',
+ 'DEL.repeats.3.4',
+ 'DEL.repeats.3.5',
+ 'DEL.repeats.3.6+',
+ 'DEL.repeats.4.1',
+ 'DEL.repeats.4.2',
+ 'DEL.repeats.4.3',
+ 'DEL.repeats.4.4',
+ 'DEL.repeats.4.5',
+ 'DEL.repeats.4.6+',
+ 'DEL.repeats.5+.1',
+ 'DEL.repeats.5+.2',
+ 'DEL.repeats.5+.3',
+ 'DEL.repeats.5+.4',
+ 'DEL.repeats.5+.5',
+ 'DEL.repeats.5+.6+',
+ 'INS.repeats.2.0',
+ 'INS.repeats.2.1',
+ 'INS.repeats.2.2',
+ 'INS.repeats.2.3',
+ 'INS.repeats.2.4',
+ 'INS.repeats.2.5+',
+ 'INS.repeats.3.0',
+ 'INS.repeats.3.1',
+ 'INS.repeats.3.2',
+ 'INS.repeats.3.3',
+ 'INS.repeats.3.4',
+ 'INS.repeats.3.5+',
+ 'INS.repeats.4.0',
+ 'INS.repeats.4.1',
+ 'INS.repeats.4.2',
+ 'INS.repeats.4.3',
+ 'INS.repeats.4.4',
+ 'INS.repeats.4.5+',
+ 'INS.repeats.5+.0',
+ 'INS.repeats.5+.1',
+ 'INS.repeats.5+.2',
+ 'INS.repeats.5+.3',
+ 'INS.repeats.5+.4',
+ 'INS.repeats.5+.5+',
+ 'DEL.MH.2.1',
+ 'DEL.MH.3.1',
+ 'DEL.MH.3.2',
+ 'DEL.MH.4.1',
+ 'DEL.MH.4.2',
+ 'DEL.MH.4.3',
+ 'DEL.MH.5+.1',
+ 'DEL.MH.5+.2',
+ 'DEL.MH.5+.3',
+ 'DEL.MH.5+.4',
+ 'DEL.MH.5+.5+'
+]
+
 
 #####################
 # Utility functions #
@@ -119,8 +207,11 @@ def beta_divergence(A, B, beta=1, square_root=False):
         # differences will be lost, and we'll get 0.0 results.
         res = np.sum(A_data*np.log(A_data/B_data) - A_data + B_data)
         res = res + np.sum(B_data_remaining)
+    elif beta == 2 or beta == 'frobenius':
+        res = np.linalg.norm(A - B, ord=None) # 2-norm for vectors and frobenius norm for matrices
+        res = res**2 / 2
     else:
-        raise ValueError('Only beta = 1 is implemented.')
+        raise ValueError('Only beta = 1 and beta = 2 are implemented.')
     if square_root:
         res = np.sqrt(2*res)
 
@@ -149,23 +240,38 @@ def match_catalog_pair(W1, W2, metric='cosine'):
     return W2[:, W2_reordered_indices], W2_reordered_indices, pdist
 
 
+def bootstrap_count_matrix(X):
+    #n_features, n_samples = X.shape
+    X_bootstrapped = []
+    for x in X.T:
+        N = int(round(np.sum(x)))
+        p = x/np.sum(x)
+        X_bootstrapped.append(np.random.multinomial(N, p))
+        #indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
+        #X_bootstrapped.append([np.sum(indices == i)
+        #                       for i in range(0, n_features)])
+    X_bootstrapped = np.array(X_bootstrapped).T
+    return X_bootstrapped
+
+
 def simulate_count_matrix(W, H, method='multinomial'):
-    n_features, n_components = W.shape
-    _, n_samples = H.shape
+    #n_features, n_components = W.shape
+    #_, n_samples = H.shape
 
     # Just in case W and H are not properly normalized
-    W, H = normalize_WH(W, H)
+    #W, H = normalize_WH(W, H)
 
     if method == 'multinomial':
-        X_simulated = []
-        for h in H.T:
-            x = np.zeros(n_features, dtype=int)
-            for i in range(0, n_components):
-                N = int(round(h[i]))
-                indices = np.random.choice(n_features, size=N, replace=True, p=W[:, i])
-                x += np.array([np.sum(indices == j) for j in range(0, n_features)])
-            X_simulated.append(x)
-        X_simulated = np.array(X_simulated).T
+        #X_simulated = []
+        #for h in H.T:
+        #    x = np.zeros(n_features, dtype=int)
+        #    for i in range(0, n_components):
+        #        N = int(round(h[i]))
+        #        indices = np.random.choice(n_features, size=N, replace=True, p=W[:, i])
+        #        x += np.array([np.sum(indices == j) for j in range(0, n_features)])
+        #    X_simulated.append(x)
+        #X_simulated = np.array(X_simulated).T
+        X_simulated = bootstrap_count_matrix(W @ H)
     else:
         raise ValueError(
             'Invalid method parameter: got %r instead of one of %r' %
@@ -174,22 +280,10 @@ def simulate_count_matrix(W, H, method='multinomial'):
     return X_simulated
 
 
-def bootstrap_count_matrix(X):
-    n_features, n_samples = X.shape
-    X_bootstrapped = []
-    for x in X.T:
-        N = int(round(np.sum(x)))
-        indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
-        X_bootstrapped.append([np.sum(indices == i)
-                               for i in range(0, n_features)])
-    X_bootstrapped = np.array(X_bootstrapped).T
-    return X_bootstrapped
-
-
-def _samplewise_error(X, X_reconstructed):
+def _samplewise_error(X, X_reconstructed, beta=1, square_root=False):
     errors = []
     for x, x_reconstructed in zip(X.T, X_reconstructed.T):
-        errors.append(beta_divergence(x, x_reconstructed, beta=1, square_root=False))
+        errors.append(beta_divergence(x, x_reconstructed, beta=beta, square_root=square_root))
     errors = np.array(errors)
     return errors
 
@@ -328,15 +422,77 @@ def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
     """
     a = np.array(a)
     b = np.array(b)
+    if len(a) != len(b):
+        warnings.warn('Lengths of a and b are different. The differential tail test could lose power.',
+                      UserWarning)
     comb = np.concatenate([a, b])
     thresh = np.percentile(comb, percentile)
     za = a * (a > thresh)
     zb = b * (b > thresh)
     # If za and zb contain identical values, e.g., both za and zb are all zeros.
-    if (np.sort(za) == np.sort(zb)).all():
+    #if len(za) == len(zb) and (np.sort(za) == np.sort(zb)).all():
+    if len(set(np.concatenate((za, zb)))) == 1:
         if alternative == 'two-sided':
             return np.nan, 1.0
         else:
             return np.nan, 0.5
     statistic, pvalue = stats.mannwhitneyu(za, zb, alternative=alternative)
     return statistic, pvalue
+
+
+def smallest_singular_value(X, norm=None, **kwargs):
+    """Calculate the smallest singular value of a matrix.
+
+    **kwargs are the arguments for sklearn.preprocessing.normalize().
+    """
+    if norm is None:
+        u, s, vh = np.linalg.svd(X)
+    else:
+        u, s, vh = np.linalg.svd(normalize(X, norm=norm, **kwargs))
+    return s[-1]
+
+
+def parallelotope_volume(X):
+    """Calculate the parallelotope volume.
+
+    Parameters
+    ----------
+    X : array, shape (m, n)
+        We consider rows of X to be edges of the parallelotope in n dimensional
+        space.
+
+        - If rank X != m, we return 0 with a warning that rows of X are not
+            linear independent.
+
+        - If rank X == m, and m == n, we use the parallelotope formed by rows
+            of X directly.
+
+        - If rank X == m, and m < n, we complete the parallelotope using
+            orthonormal basis of the null space (kernel) of X.
+
+    NOTE:
+    This is copied from the old SigExplorer. If we want to use it on the signature
+    matrix W, we should supply W.T.
+    """
+    m, n = X.shape
+    r = np.linalg.matrix_rank(X)
+    if r != m:
+        warnings.warn("Rank (= %d) of the input matrix is not equal to the "
+                      "row number (= %d). Thus rows of the input matrix are "
+                      "not linear independent" % (r, m),
+                      UserWarning)
+        return 0
+    else:
+        if m == n:
+            v = np.abs(np.linalg.det(normalize(X)))
+        else:
+            v = np.abs(
+                np.linalg.det(
+                    normalize(
+                        np.concatenate(
+                            (X, sp.linalg.null_space(X).T), axis=0
+                        ), axis=1
+                    )
+                )
+            )
+    return v

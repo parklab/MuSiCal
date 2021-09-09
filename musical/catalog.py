@@ -20,7 +20,9 @@ CATALOG_NAMES = [
     'COSMIC_v2_SBS_WGS', # https://cancer.sanger.ac.uk/cancergenome/assets/signatures_probabilities.txt
     'COSMIC_v3_SBS_WGS', # https://dcc.icgc.org/api/v1/download?fn=/PCAWG/mutational_signatures/Signatures/SP_Signatures/SigProfiler_reference_signatures/SigProfiler_reference_whole-genome_signatures/sigProfiler_SBS_signatures_2019_05_22.csv
     'COSMIC_v3_SBS_WES', # https://dcc.icgc.org/api/v1/download?fn=/PCAWG/mutational_signatures/Signatures/SP_Signatures/SigProfiler_reference_signatures/Sigprofiler_Exome_Signatures/sigProfiler_exome_SBS_signatures.csv
-    'COSMIC_v3p1_SBS_WGS' # https://cancer.sanger.ac.uk/sigs-assets-20/COSMIC_Mutational_Signatures_v3.1.xlsx
+    'COSMIC_v3p1_SBS_WGS', # https://cancer.sanger.ac.uk/sigs-assets-20/COSMIC_Mutational_Signatures_v3.1.xlsx
+    'COSMIC_v3p2_SBS_WGS', #https://cancer.sanger.ac.uk/signatures/downloads/
+    'COSMIC_v3p1_Indel', # https://cancer.sanger.ac.uk/signatures/documents/440/COSMIC_v3.1_ID_GRCh37.txt
 ]
 
 def load_catalog(name='COSMIC_v3p1_SBS_WGS', sep=',', index_col=0):
