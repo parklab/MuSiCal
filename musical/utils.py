@@ -347,9 +347,11 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     top = data[0][0] # Index of the top matched signature.
     combs = [] # All signature combinations to be tested.
     if include_top:
+        combs.extend([(top,)]) # First, include singlets
         sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
         combs.extend([(top, sig) for sig in sigs_notop])
     else:
+        combs.extend([(sig,) for sig in sigs]) # First, include singlets
         combs.extend(list(itertools.combinations(sigs, 2)))
     # Then, perform NNLS on all combinations to be tested, and select the best combination based on residual error.
     data = []
@@ -371,7 +373,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     ##################### Triplets ####################
     ###################################################
     ### Otherwise, consider triplets
-    combs = []
+    #combs = []
     if include_top:
         sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
         combs.extend([(top,) + item for item in list(itertools.combinations(sigs_notop, 2))])
