@@ -213,12 +213,12 @@ def nnls_sparse(x, W, method='llh',
                     inds_other = np.array([i for i in np.arange(0, n_components) if i != ind])
                     x_nnls2 = W[:, inds_other] @ sp.optimize.nnls(W[:, inds_other], x)[0]
                     # to make the selection among signatures with non-zero exposure exchange above two lines with the line below
-                    # x_nnls2 = W[:, inds_current[inds_current != ind]] @ sp.optimize.nnls(W[:, inds_current[inds_current != ind]], x)[0]                                                                                                        
+                    # x_nnls2 = W[:, inds_current[inds_current != ind]] @ sp.optimize.nnls(W[:, inds_current[inds_current != ind]], x)[0]
                     xs.append(x_nnls2)
                     ps = np.array([x_nnls/np.sum(x_nnls), x_nnls2/np.sum(x_nnls2)])
                     lhs = _lh_multinomial(x, ps)
                     likelihood_ratios.append(lhs[0])
-                                              
+                    
                 if np.min(likelihood_ratios) > llh_thresh:
                     break
                 else:
