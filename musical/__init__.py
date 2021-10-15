@@ -10,6 +10,7 @@ from .catalog import load_catalog
 from .preprocessing import remove_samples_based_on_gini, identify_distinct_cluster
 from .cluster import OptimalK
 from .simulation import simulate_LDA
+from .nmf_cov import NMFCOV
 
 __all__ = ['beta_divergence',
            'sigplot_bar',
