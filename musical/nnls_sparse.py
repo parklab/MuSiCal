@@ -218,7 +218,7 @@ def nnls_sparse(x, W, method='llh',
                     ps = np.array([x_nnls/np.sum(x_nnls), x_nnls2/np.sum(x_nnls2)])
                     lhs = _lh_multinomial(x, ps)
                     likelihood_ratios.append(lhs[0])
-                    
+
                 if np.min(likelihood_ratios) > llh_thresh:
                     break
                 else:

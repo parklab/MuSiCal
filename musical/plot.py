@@ -299,6 +299,8 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
     if outfile is not None:
         plt.savefig(outfile, bbox_inches='tight')
 
+    return fig
+
 
 def plot_silhouettes(model,  title_tag=None, plotpvalues=True,
                 tick_fontsize=12, label_fontsize=14,
