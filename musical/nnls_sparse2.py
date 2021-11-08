@@ -300,7 +300,7 @@ def nnls_likelihood_backward_legacy(x, W, thresh=10.0):
     return h
 
 
-class NNLSSPARSE:
+class SparseNNLS:
     def __init__(self,
                  method='likelihood_bidirectional',
                  thresh1=None,

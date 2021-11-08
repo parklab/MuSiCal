@@ -11,8 +11,8 @@ from .preprocessing import remove_samples_based_on_gini, identify_distinct_clust
 from .cluster import OptimalK
 from .simulation import simulate_LDA
 from .nmf_cov import NMFCOV
-from .NNLS_SPAR import NNLSSPAR
-from .nnls_sparse2 import NNLSSPARSE
+from .nnls_sparse_exact import ExactSparseNNLS
+from .nnls_sparse2 import SparseNNLS
 
 __all__ = ['beta_divergence',
            'sigplot_bar',
@@ -26,5 +26,5 @@ __all__ = ['beta_divergence',
            'identify_distinct_cluster',
            'OptimalK',
            'simulate_LDA',
-           'NNLSSPAR',
-           'NNLSSPARSE']
+           'ExactSparseNNLS',
+           'SparseNNLS']

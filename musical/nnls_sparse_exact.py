@@ -3,38 +3,38 @@ from numpy import *
 from queue import *
 from statistics import *
 from guppy import hpy
-import time 
+import time
 import os
 import sys
 from scipy.optimize import nnls,lsq_linear
 
-class NNLSSPAR:
+class ExactSparseNNLS:
     def __init__(self,A,b,s):
-        """ 
-        initilization of parameters 
+        """
+        initilization of parameters
         -------------------------------------------------------------------------------------
         A       = m x n matrix consisting of m observations of n independent variables
         b       = m x 1 column vector consisting of m observed dependent variable
         s       = sparsity level
-        
+
         Solver parameters
         -------------------------------------------------------------------------------------
         P       = indices of possible choices for independent variable
         C       = Chosen set of independent variables
         E       = indices of unconstrained least squares varaibles
-        
-        This Python cde implements the algorithms described in the paper "PROVABLY OPTIMAL SPARSE SOLUTIONS TO 
-        OVERDETERMINED LINEAR SYSTEMS WITH NON-NEGATIVITY CONSTRAINTS IN A LEAST-SQUARES SENSE BY IMPLICIT 
+
+        This Python cde implements the algorithms described in the paper "PROVABLY OPTIMAL SPARSE SOLUTIONS TO
+        OVERDETERMINED LINEAR SYSTEMS WITH NON-NEGATIVITY CONSTRAINTS IN A LEAST-SQUARES SENSE BY IMPLICIT
         ENUMERATION" by Fatih S. AKTAŞ, Ömer EKMEKÇİOĞLU, Mustafa Ç. PINAR.
-        
-        If you get a pythonic error, it will probably because of how unfriendly is python with usage of 
+
+        If you get a pythonic error, it will probably because of how unfriendly is python with usage of
         vectors, like lists cannot be sliced with indeces but arrays can be done, hstack converts everything
         to floating points, registering a vector and randomly trying to make it 2 dimensional takes too much
         unnecessary work, some functions do inverse of hstack, randomly converting numbers to integers etc.
-        
+
         Please contact selim.aktas@ug.bilkent.edu.tr for any bugs, errors and recommendations.
         """
-        
+
         for i in range(len(A)):
             for j in range(len(A[0])):
                 if math.isnan(A[i,j]) or abs(A[i,j]) == Inf:
@@ -45,7 +45,7 @@ class NNLSSPAR:
                 if type(A[i,j]) != float64:
                     print("Matrix A should be registered as float64, otherwise computations will be wrong\
 for example; Variance will be negative")
-            
+
         if shape(shape(b)) == (1,):
             print("you did not register the vector b as a vector of size m x 1, you are making a pythonic\
                   error, please reshape the vector b")
@@ -54,7 +54,7 @@ for example; Variance will be negative")
                   "b is",shape(b)[0],"x 1 vector, make sure" ,shape(A)[0],"=",shape(b)[0])
         elif shape(A)[0] <= shape(A)[1]:
             print("The linear system is supposed to be overdetermined, given matrix A of size m x n,",\
-                  "the condition m > n should be satisfied") 
+                  "the condition m > n should be satisfied")
         elif shape(b)[1] != 1:
             print("input argument b should be a vector of size m x 1, where m is the row size of the \
                   A")
@@ -67,13 +67,13 @@ for example; Variance will be negative")
             self.b = b
             self.bv = b[:,0]
             self.s = s
-            """ registering the matrix A independent variable values, vector b dependent variable values 
+            """ registering the matrix A independent variable values, vector b dependent variable values
             and s sparsity level """
             self.m = shape(A)[0]
             self.n = shape(A)[1]
             """ saving the shape of matrix A explicitly not to repeat use of shape() function """
             self.means = abs(A.mean(axis = 0))
-            """ storing the mean values of each independent variable which will be used for 
+            """ storing the mean values of each independent variable which will be used for
             selection criteria in solver algortihms"""
             self.sterror = std(A,axis = 0)
             """ storing the standard deviation and variance of each independent variable which will
@@ -133,7 +133,7 @@ for example; Variance will be negative")
             t += 1
             grad = self.rtilde[:,ind].T.dot(self.rtilde[:,ind].dot(x1) - self.qb[:,0])
             x1 = x1 - step * grad
-            
+
             x1[where(x1 < 0)] = 0
             si = argsort(x1)
             x1[si[:-self.s]] = 0
@@ -144,17 +144,17 @@ for example; Variance will be negative")
 
     def qr_nnls(self,ind):
         """ non-negative least squares solution to support (ind) after QR shrinking step """
-        
+
         t = max(ind)+1
         """ since R is upper triangular, rows beyond t are 0 """
         sol = nnls(self.rtilde[:t,ind],self.qb[:t,0])
         res = sol[1] ** 2 + norm(self.qb[t:]) ** 2
         return [sol[0],res]
-    
+
     def qr_nnlsl(self,ind):
-        """ non-negative least squares solution to support (ind) after QR shrinking step for 
+        """ non-negative least squares solution to support (ind) after QR shrinking step for
         all subsets problem, using table lookups"""
-        
+
         check = str(ind)
         if check in self.tablelookup_nnls:
             return self.tablelookup_nnls[check]
@@ -167,11 +167,11 @@ for example; Variance will be negative")
         self.tablelookup_nnls[check] = [sol[0],res]
         """ registering the table look up """
         return [sol[0],res]
-    
+
     def qr_nnls_elsq(self,ind):
         """ non-negative least squares solution to support (ind) and unconstrained varaible self.excluded_indices
         after QR shrinking step """
-        
+
         l = len(ind)
         t = max(max(ind),self.excluded_indices_max)+1
         """ since R is upper triangular, rows beyond t are 0 """
@@ -197,29 +197,29 @@ for example; Variance will be negative")
         sol = lsq_linear(self.rtilde[:t,ind+self.excluded_indices],self.qb[:t,0],bounds = [lb,ub])
         """ least squares with linear inequalities solver """
         self.tablelookup_nnls_elsq[check] = [sol.x,sol.cost]
-        
-        return [sol.x,sol.cost]    
-                    
+
+        return [sol.x,sol.cost]
+
     def solve_nnls(self,P ,C = []):
-        """ This algortihm does best first search with Branch and Bound done according to their impact 
+        """ This algortihm does best first search with Branch and Bound done according to their impact
         on the least square
-        
+
         let beta(i) be NNLS coefficient of x(i),i'th independent variable
         let xbar(i) be mean of x(i), i'th independen variable
         let std(i) be standard deviation of x(i), i'th independent variable
         if (|xbar(j)| + std(j))*beta(j) is the highest then j'th variable has the highest impact
-        
-        xbar*beta is justified because of unit selection, a unit maybe chosen for x(i) such that it is 
+
+        xbar*beta is justified because of unit selection, a unit maybe chosen for x(i) such that it is
         large in quantity,but determines something relatively smaller to it in numbers
-        then it will be adjusted smaller coefficientin LSE for accurate results, other way around 
-        for when unit makes x(i) small 
-        
+        then it will be adjusted smaller coefficientin LSE for accurate results, other way around
+        for when unit makes x(i) small
+
         std*beta is justified because lets say independen variable x(j), takes values from -1000 to 1000
         values of x(j) are actually big, and also important because also high beta(j), but by sheer chance,
         expectation, or statistically the mean is 0 for x(j) so xbar(j)*beta(j) would not catch this variable
-        
-        This search rule basically finds the variable with the highest magnite in the scaled version of the non negative 
-        least squares if the variable is not scaled prior. This is useful because it uses much less flops thansolving a 
+
+        This search rule basically finds the variable with the highest magnite in the scaled version of the non negative
+        least squares if the variable is not scaled prior. This is useful because it uses much less flops thansolving a
         parallel non negative least squares with scaled variables.
 
         """
@@ -264,31 +264,31 @@ for example; Variance will be negative")
                     l_index_bb = argmax(bb_dec)
                     """ find index of the largest value in decision vector """
                     r_index_bb = P[l_index_bb]
-                    """ find index of the variable by index of the largest value in decision vector 
-                    this is the chosen variable for this node """ 
+                    """ find index of the variable by index of the largest value in decision vector
+                    this is the chosen variable for this node """
                     C1 = C + [r_index_bb]
                     coef[l_index_bb:-1],coef[-1] = coef[l_index_bb+1:],coef[l_index_bb]
-                    """ add the new chosen variable to the solution 
-                    We also use old C, where chosen variable is not added""" 
+                    """ add the new chosen variable to the solution
+                    We also use old C, where chosen variable is not added"""
                     P1 = P[:]
-                    
+
                     del P1[l_index_bb]
-                    """ erasing the chosen variable from the possible variables' list 
+                    """ erasing the chosen variable from the possible variables' list
                     reminder: this stores the variables by their indices"""
                     lower2 = self.qr_nnls(P1+C)
-                    """ calculate lower bound of the second solution where C is the old chosen variable 
-                    list and p1 is the possible variable (indices ) list where the chosen variable for 
+                    """ calculate lower bound of the second solution where C is the old chosen variable
+                    list and p1 is the possible variable (indices ) list where the chosen variable for
                     this node is erased """
-                    len_c1 = len_c +1 
+                    len_c1 = len_c +1
                     len_p = len_p -1
                     if len_c1 == self.s:
                         sol = self.qr_nnls(C1)
                         q.put([sol[1],[P1,C1,sol[0],len_c1,len_p]])
                         q.put([lower2[1],[P1,C,lower2[0],len_c,len_p]])
                     else:
-                        """ if the length of the chosen variable list is not equal to sparsity level, 
+                        """ if the length of the chosen variable list is not equal to sparsity level,
                         then it is lower than sparsity level. We create two new nodes where first node
-                        is the node where chosen variable for this node is in the solution and the second 
+                        is the node where chosen variable for this node is in the solution and the second
                         where the chosen variable for this node is erased from the problem """
                         q.put([low ,[P1,C1,coef,len_c1,len_p]])
                         q.put([lower2[1] ,[P1,C,lower2[0],len_c,len_p]])
@@ -305,15 +305,15 @@ for example; Variance will be negative")
                 """ termination condition of the algorithm """
 
     def solve_mk0(self,P ,C = []):
-        """ 
-        
-        This is a function to solve the all subsets problem with exploiting previously solved problems with table look ups.
-        
         """
-        
+
+        This is a function to solve the all subsets problem with exploiting previously solved problems with table look ups.
+
+        """
+
         P_0 = P[:]
-        C_0 = C[:]        
-        
+        C_0 = C[:]
+
         f = self.qr_nnls(C+P)
         self.tqsize = []
         lenp = len(P)
@@ -364,32 +364,32 @@ for example; Variance will be negative")
                         l_index_bb = argmax(bb_dec)
                         """ find index of the largest value in decision vector """
                         r_index_bb = P[l_index_bb]
-                        """ find index of the variable by index of the largest value in decision vector 
-                        this is the chosen variable for this node """ 
+                        """ find index of the variable by index of the largest value in decision vector
+                        this is the chosen variable for this node """
                         C1 = C + [r_index_bb]
                         coef1 = copy(coef)
                         coef1[l_index_bb:-1],coef1[-1] = coef1[l_index_bb+1:],coef1[l_index_bb]
-                        """ add the new chosen variable to the solution 
-                        We also use old C, where chosen variable is not added""" 
+                        """ add the new chosen variable to the solution
+                        We also use old C, where chosen variable is not added"""
                         P1 = P[:]
                         del P1[l_index_bb]
-                        """ erasing the chosen variable from the possible variables' list 
+                        """ erasing the chosen variable from the possible variables' list
                         reminder: this stores the variables by their indices"""
                         lower2 = self.qr_nnlsl(P1+C)
-                        """ calculate lower bound of the second solution where C is the old chosen variable 
-                        list and p1 is the possible variable (indices ) list where the chosen variable for 
+                        """ calculate lower bound of the second solution where C is the old chosen variable
+                        list and p1 is the possible variable (indices ) list where the chosen variable for
                         this node is erased """
                         len_p -= 1
-                        len_c1 = len_c +1 
+                        len_c1 = len_c +1
                         if len_c1 == self.s:
                             """ fix here """
                             sol = self.qr_nnls(C1)
                             q.put([sol[1],[P1,C1,sol[0],len_c1,len_p]])
                             q.put([lower2[1],[P1,C,lower2[0],len_c,len_p]])
                         else:
-                            """ if the length of the chosen variable list is not equal to sparsity level, 
+                            """ if the length of the chosen variable list is not equal to sparsity level,
                             then it is lower than sparsity level. We create two new nodes where first node
-                            is the node where chosen variable for this node is in the solution and the second 
+                            is the node where chosen variable for this node is in the solution and the second
                             where the chosen variable for this node is erased from the problem """
                             q.put([low ,[P1,C1,coef1,len_c1,len_p]])
                             q.put([lower2[1] ,[P1,C,lower2[0],len_c,len_p]])
@@ -404,15 +404,15 @@ for example; Variance will be negative")
                         self.nodes.append(node)
                         break
                     """ termination condition of the algorithm """
-                    
+
     def solve_nnls_elsq(self,P ,C = [],E = []):
-        """ 
-        
-        This Algorithm solves the non-negative sparse least squares with extended least squares problem, 
+        """
+
+        This Algorithm solves the non-negative sparse least squares with extended least squares problem,
         formulated as follows;
-                
+
         min ||Ax + By - b||_2
-        
+
             ||x||_0 <= s
             x >= 0
             y free
@@ -462,31 +462,31 @@ for example; Variance will be negative")
                     l_index_bb = argmax(bb_dec)
                     """ find index of the largest value in decision vector """
                     r_index_bb = P[l_index_bb]
-                    """ find index of the variable by index of the largest value in decision vector 
-                    this is the chosen variable for this node """ 
+                    """ find index of the variable by index of the largest value in decision vector
+                    this is the chosen variable for this node """
                     C1 = C + [r_index_bb]
                     coef[l_index_bb:-1],coef[-1] = coef[l_index_bb+1:],coef[l_index_bb]
-                    """ add the new chosen variable to the solution 
-                    We also use old C, where chosen variable is not added""" 
+                    """ add the new chosen variable to the solution
+                    We also use old C, where chosen variable is not added"""
                     P1 = P[:]
-                    
+
                     del P1[l_index_bb]
-                    """ erasing the chosen variable from the possible variables' list 
+                    """ erasing the chosen variable from the possible variables' list
                     reminder: this stores the variables by their indices"""
                     lower2 = self.qr_nnls_elsq(P1+C)
-                    """ calculate lower bound of the second solution where C is the old chosen variable 
-                    list and p1 is the possible variable (indices ) list where the chosen variable for 
+                    """ calculate lower bound of the second solution where C is the old chosen variable
+                    list and p1 is the possible variable (indices ) list where the chosen variable for
                     this node is erased """
-                    len_c1 = len_c +1 
+                    len_c1 = len_c +1
                     len_p = len_p -1
                     if len_c1 == self.s:
                         sol = self.qr_nnls_elsq(C1)
                         q.put([sol[1],[P1,C1,sol[0],len_c1,len_p]])
                         q.put([lower2[1],[P1,C,lower2[0],len_c,len_p]])
                     else:
-                        """ if the length of the chosen variable list is not equal to sparsity level, 
+                        """ if the length of the chosen variable list is not equal to sparsity level,
                         then it is lower than sparsity level. We create two new nodes where first node
-                        is the node where chosen variable for this node is in the solution and the second 
+                        is the node where chosen variable for this node is in the solution and the second
                         where the chosen variable for this node is erased from the problem """
                         q.put([low ,[P1,C1,coef,len_c1,len_p]])
                         q.put([lower2[1] ,[P1,C,lower2[0],len_c,len_p]])
@@ -503,19 +503,19 @@ for example; Variance will be negative")
                 """ termination condition of the algorithm """
 
     def solve_mk0_elsq(self,P ,C = [],E = []):
-        """ 
-        
+        """
+
         This is a function to solve the all subsets problem for extended least squares problem
         with exploiting previously solved problems with table look ups.
-        
+
         """
         self.excluded_indices = E
         self.excluded_indices_max = max(E)
         self.excluded_indices_length = len(E)
-        
+
         P_0 = P[:]
-        C_0 = C[:]   
-        
+        C_0 = C[:]
+
         f = self.qr_nnls(C+P)
         self.tqsize = []
         lenp = len(P)
@@ -566,32 +566,32 @@ for example; Variance will be negative")
                         l_index_bb = argmax(bb_dec)
                         """ find index of the largest value in decision vector """
                         r_index_bb = P[l_index_bb]
-                        """ find index of the variable by index of the largest value in decision vector 
-                        this is the chosen variable for this node """ 
+                        """ find index of the variable by index of the largest value in decision vector
+                        this is the chosen variable for this node """
                         C1 = C + [r_index_bb]
                         coef1 = copy(coef)
                         coef1[l_index_bb:-1],coef1[-1] = coef1[l_index_bb+1:],coef1[l_index_bb]
-                        """ add the new chosen variable to the solution 
-                        We also use old C, where chosen variable is not added""" 
+                        """ add the new chosen variable to the solution
+                        We also use old C, where chosen variable is not added"""
                         P1 = P[:]
                         del P1[l_index_bb]
-                        """ erasing the chosen variable from the possible variables' list 
+                        """ erasing the chosen variable from the possible variables' list
                         reminder: this stores the variables by their indices"""
                         lower2 = self.qr_nnls_elsql(P1+C)
-                        """ calculate lower bound of the second solution where C is the old chosen variable 
-                        list and p1 is the possible variable (indices ) list where the chosen variable for 
+                        """ calculate lower bound of the second solution where C is the old chosen variable
+                        list and p1 is the possible variable (indices ) list where the chosen variable for
                         this node is erased """
                         len_p -= 1
-                        len_c1 = len_c +1 
+                        len_c1 = len_c +1
                         if len_c1 == self.s:
                             """ fix here """
                             sol = self.qr_nnls_elsq(C1)
                             q.put([sol[1],[P1,C1,sol[0],len_c1,len_p]])
                             q.put([lower2[1],[P1,C,lower2[0],len_c,len_p]])
                         else:
-                            """ if the length of the chosen variable list is not equal to sparsity level, 
+                            """ if the length of the chosen variable list is not equal to sparsity level,
                             then it is lower than sparsity level. We create two new nodes where first node
-                            is the node where chosen variable for this node is in the solution and the second 
+                            is the node where chosen variable for this node is in the solution and the second
                             where the chosen variable for this node is erased from the problem """
                             q.put([low ,[P1,C1,coef1,len_c1,len_p]])
                             q.put([lower2[1] ,[P1,C,lower2[0],len_c,len_p]])
@@ -606,13 +606,13 @@ for example; Variance will be negative")
                         self.nodes.append(node)
                         break
                     """ termination condition of the algorithm """
-                    
-    
+
+
     def solve(self,C = []):
-        """ 
-        This is wrapper for sparse non-negative least squares routines 
         """
-        
+        This is wrapper for sparse non-negative least squares routines
+        """
+
         if self.out not in [0,1,2]:
             print("OUT parameter should be a integer >=0  and <= 2")
             return None
@@ -622,7 +622,7 @@ for example; Variance will be negative")
         elif self.many > math.factorial(self.n)/(math.factorial(self.s)*math.factorial(self.n-self.s)):
             print("Reduce number of best subsets you want to find, it is greater than  or equal to all possibilities")
             return None
-        
+
         if not type(C) == list and C != []:
             print("C should be a list, C is taken empty list now ")
             C = []
@@ -635,8 +635,8 @@ for example; Variance will be negative")
         elif len(C) > self.s:
             print(" Length of C cannot be greater than spartsity level s,C is taken empty list")
             C = []
-            
-            
+
+
         mem = hpy()
         """ memory object """
         mem.heap()
@@ -645,21 +645,21 @@ for example; Variance will be negative")
         """ referencing this point, memory usage will be calculated """
         t0 = time.process_time()
         """ referencing this point, cpu usage will be calculated """
-        
+
         if self.out != 2:
             sys.stdout = open(os.devnull, 'w')
         else:
-            sys.stdout = self.original_stdout    
+            sys.stdout = self.original_stdout
         """ whether user wants to print every step of the algorithm or not """
-        
+
         P = list(range(self.n))
         if C != []:
             for i in range(len(C)):
                 P.remove(C[i])
         """ Preparing the P and C that will be passed to the function """
-        
+
         """ Another if list to find and call the right function """
-        
+
         t3 = time.time()
         self.solve_nnls(P,C)
         t4 = time.time()
@@ -675,18 +675,18 @@ for example; Variance will be negative")
         m = mem.heap()
         print(m)
         self.memory = m.size
-        """ real memory usage is different than the number we store here because we use guppy package 
+        """ real memory usage is different than the number we store here because we use guppy package
         to track down memory usage of our algorithm, tracking down memory usage is also memory extensive
         process """
-         
+
         sys.stdout = self.original_stdout
 
 
     def solve_elsq(self,E = [],C = []):
-        """ 
-        This is wrapper for sparse non-negative least squares with extended least squares routines 
         """
-        
+        This is wrapper for sparse non-negative least squares with extended least squares routines
+        """
+
         if self.out not in [0,1,2]:
             print("OUT parameter should be a integer >=0  and <= 2")
             return None
@@ -696,7 +696,7 @@ for example; Variance will be negative")
         elif self.many > math.factorial(self.n)/(math.factorial(self.s)*math.factorial(self.n-self.s)):
             print("Reduce number of best subsets you want to find, it is greater than  or equal to all possibilities")
             return None
-        
+
         if not type(C) == list and C != []:
             print("C should be a list, C is taken empty list now ")
             C = []
@@ -713,7 +713,7 @@ for example; Variance will be negative")
             print("extended least squares with empty extension set, please use solve() method instead")
         elif set(C).intersection(E) != set():
             print("There is a common index in C and E ")
-            
+
         mem = hpy()
         """ memory object """
         mem.heap()
@@ -722,13 +722,13 @@ for example; Variance will be negative")
         """ referencing this point, memory usage will be calculated """
         t0 = time.process_time()
         """ referencing this point, cpu usage will be calculated """
-        
+
         if self.out != 2:
             sys.stdout = open(os.devnull, 'w')
         else:
-            sys.stdout = self.original_stdout    
+            sys.stdout = self.original_stdout
         """ whether user wants to print every step of the algorithm or not """
-        
+
         P = list(range(self.n))
         if C != []:
             for i in range(len(C)):
@@ -736,9 +736,9 @@ for example; Variance will be negative")
         for i in range(len(E)):
             P.remove(E[i])
         """ Preparing the P and C that will be passed to the function """
-        
+
         """ Another if list to find and call the right function """
-        
+
         t3 = time.time()
         self.solve_nnls_elsq(P,C,E)
         t4 = time.time()
@@ -754,14 +754,14 @@ for example; Variance will be negative")
         m = mem.heap()
         print(m)
         self.memory = m.size
-        """ real memory usage is different than the number we store here because we use guppy package 
+        """ real memory usage is different than the number we store here because we use guppy package
         to track down memory usage of our algorithm, tracking down memory usage is also memory extensive
         process """
-         
+
         sys.stdout = self.original_stdout
-        
-    def solve_allsubsets(self):        
-        """ 
+
+    def solve_allsubsets(self):
+        """
         This is wrapper for sparse non-negative least squares routines for all subsets problem
         """
         if self.many > self.n:
@@ -779,18 +779,18 @@ for example; Variance will be negative")
         """ referencing this point, memory usage will be calculated """
         t0 = time.process_time()
         """ referencing this point, cpu usage will be calculated """
-        
+
         if self.out != 2:
             sys.stdout = open(os.devnull, 'w')
         else:
-            sys.stdout = self.original_stdout    
+            sys.stdout = self.original_stdout
         """ whether user wants to print every step of the algorithm or not """
-            
+
         P = list(range(self.n))
         C = []
         """ Preparing the P and C that will be passed to the function """
-        
-        
+
+
         t3 = time.time()
         self.solve_mk0(P,C)
         """ mk0 also works, but this is in general faster """
@@ -801,21 +801,21 @@ for example; Variance will be negative")
         if self.out == 0:
             sys.stdout = open(os.devnull, 'w')
         else:
-            sys.stdout = self.original_stdout   
+            sys.stdout = self.original_stdout
         print("CPU time of the algorithm",self.cpu,"seconds")
         print("Wall time of the algorithm",self.real,"seconds")
         m = mem.heap()
         print(m)
         self.memory = m.size
-        """ real memory usage is different than the number we store here because we use guppy package 
+        """ real memory usage is different than the number we store here because we use guppy package
         to track down memory usage of our algorithm, tracking down memory usage is also memory extensive
         process """
-         
+
         sys.stdout = self.original_stdout
 
-    def solve_allsubsets_elsq(self,E = []):        
-        """ 
-        This is wrapper for sparse non-negative least squares with extended least squares routines for all subsets 
+    def solve_allsubsets_elsq(self,E = []):
+        """
+        This is wrapper for sparse non-negative least squares with extended least squares routines for all subsets
         problem
         """
         if self.many > self.n:
@@ -826,7 +826,7 @@ for example; Variance will be negative")
             return None
         elif E == []:
             print("extended least squares with empty extension set, please use solve_allsubsets() method instead")
-            
+
         mem = hpy()
         """ memory object """
         mem.heap()
@@ -835,18 +835,18 @@ for example; Variance will be negative")
         """ referencing this point, memory usage will be calculated """
         t0 = time.process_time()
         """ referencing this point, cpu usage will be calculated """
-        
+
         if self.out != 2:
             sys.stdout = open(os.devnull, 'w')
         else:
-            sys.stdout = self.original_stdout    
+            sys.stdout = self.original_stdout
         """ whether user wants to print every step of the algorithm or not """
-            
+
         P = list(range(self.n))
         C = []
         """ Preparing the P and C that will be passed to the function """
-        
-        
+
+
         t3 = time.time()
         self.solve_mk0_elsq(P,C,E)
         """ mk0 also works, but this is in general faster """
@@ -858,15 +858,13 @@ for example; Variance will be negative")
         if self.out == 0:
             sys.stdout = open(os.devnull, 'w')
         else:
-            sys.stdout = self.original_stdout   
+            sys.stdout = self.original_stdout
         print("CPU time of the algorithm",duration,"seconds")
         m = mem.heap()
         print(m)
         self.memory = m.size
-        """ real memory usage is different than the number we store here because we use guppy package 
+        """ real memory usage is different than the number we store here because we use guppy package
         to track down memory usage of our algorithm, tracking down memory usage is also memory extensive
         process """
-         
+
         sys.stdout = self.original_stdout
-        
-            
