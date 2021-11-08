@@ -12,6 +12,7 @@ from .cluster import OptimalK
 from .simulation import simulate_LDA
 from .nmf_cov import NMFCOV
 from .NNLS_SPAR import NNLSSPAR
+from .nnls_sparse2 import NNLSSPARSE
 
 __all__ = ['beta_divergence',
            'sigplot_bar',
@@ -25,4 +26,5 @@ __all__ = ['beta_divergence',
            'identify_distinct_cluster',
            'OptimalK',
            'simulate_LDA',
-           'NNLSSPAR']
+           'NNLSSPAR',
+           'NNLSSPARSE']
