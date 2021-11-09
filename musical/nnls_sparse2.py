@@ -93,7 +93,7 @@ def nnls_thresh(x, W, thresh=0.05, thresh_agnostic=0.0):
     return h
 
 
-def _multinomial_loglikelihood(x, p, epsilon=1e-16, per_trial=False):
+def _multinomial_loglikelihood(x, p, epsilon=1e-16, per_trial=True):
     """Log likelihood of multinomial distribution: logP(x|p).
 
     Parameters
@@ -119,7 +119,7 @@ def _multinomial_loglikelihood(x, p, epsilon=1e-16, per_trial=False):
         return np.sum(x*np.log(p))
 
 
-def nnls_likelihood_backward(x, W, thresh=10.0, per_trial=False):
+def nnls_likelihood_backward(x, W, thresh=0.001, per_trial=True):
     """Likelihood NNLS with backward stepwise trimming
 
     An initial NNLS is first done. Then we trim the exposure vector in a
@@ -171,7 +171,7 @@ def nnls_likelihood_backward(x, W, thresh=10.0, per_trial=False):
     return h
 
 
-def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.0, max_iter=1000, per_trial=False):
+def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=0.002, max_iter=1000, per_trial=True):
     """Likelihood NNLS with both backward and forward stepwise rountines.
 
     Notes:
@@ -266,7 +266,7 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.
     return h
 
 
-def nnls_likelihood_backward_relaxed(x, W, thresh=10.0, per_trial=False):
+def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True):
     n_sigs = W.shape[1]
     indices_all = np.arange(0, n_sigs)
     ### Initial NNLS
@@ -304,7 +304,7 @@ def nnls_likelihood_backward_relaxed(x, W, thresh=10.0, per_trial=False):
     return h
 
 
-def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=10.0, thresh_forward=20.0, max_iter=1000, per_trial=False):
+def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_forward=0.002, max_iter=1000, per_trial=True):
     if thresh_backward >= thresh_forward:
         warnings.warn('thresh_backward is not smaller than thresh_forward. This might lead to indefinite loops.', UserWarning)
     n_sigs = W.shape[1]
@@ -460,10 +460,10 @@ class SparseNNLS:
             ]
         elif self.method == 'likelihood_backward':
             if self.thresh1 is None:
-                self.thresh1 = 10.0
+                self.thresh1 = 0.001
             self.thresh = self.thresh1
             if self.per_trial is None:
-                self.per_trial = False
+                self.per_trial = True
             if self.thresh2 is not None:
                 warnings.warn('Method is chosen as likelihood_backward. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
@@ -472,10 +472,10 @@ class SparseNNLS:
             ]
         elif self.method == 'likelihood_backward_relaxed':
             if self.thresh1 is None:
-                self.thresh1 = 10.0
+                self.thresh1 = 0.001
             self.thresh = self.thresh1
             if self.per_trial is None:
-                self.per_trial = False
+                self.per_trial = True
             if self.thresh2 is not None:
                 warnings.warn('Method is chosen as likelihood_backward_relaxed. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
@@ -484,29 +484,29 @@ class SparseNNLS:
             ]
         elif self.method == 'likelihood_bidirectional':
             if self.thresh1 is None:
-                self.thresh1 = 10.0
+                self.thresh1 = 0.001
             self.thresh_backward = self.thresh1
             if self.thresh2 is None:
-                self.thresh2 = 20.0
+                self.thresh2 = 0.002
             self.thresh_forward = self.thresh2
             if self.max_iter is None:
                 self.max_iter = 1000
             if self.per_trial is None:
-                self.per_trial = False
+                self.per_trial = True
             self.H = [
                 nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_bidirectional_relaxed':
             if self.thresh1 is None:
-                self.thresh1 = 10.0
+                self.thresh1 = 0.001
             self.thresh_backward = self.thresh1
             if self.thresh2 is None:
-                self.thresh2 = 20.0
+                self.thresh2 = 0.002
             self.thresh_forward = self.thresh2
             if self.max_iter is None:
                 self.max_iter = 1000
             if self.per_trial is None:
-                self.per_trial = False
+                self.per_trial = True
             self.H = [
                 nnls_likelihood_bidirectional_relaxed(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
