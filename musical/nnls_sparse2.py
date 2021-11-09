@@ -7,6 +7,8 @@ from sklearn.metrics import pairwise_distances
 import scipy.stats as stats
 import warnings
 from sklearn.preprocessing import normalize
+import multiprocessing
+import os
 
 
 def _fill_vector(x, indices, L):
@@ -553,19 +555,36 @@ class SparseNNLSGrid:
                  thresh2_grid=None,
                  max_iter=None,
                  per_trial=None,
-                 N=None
-                 ):
+                 N=None,
+                 ncpu=1,
+                 verbose=0
+                ):
         self.method = method
         self.thresh1_grid = thresh1_grid
         self.thresh2_grid = thresh2_grid
         self.max_iter = max_iter
         self.per_trial = per_trial
         self.N = N
+        self.ncpu = ncpu
+        self.verbose = verbose
+
+    def _job(self, parameters):
+        thresh1, thresh2 = parameters
+        np.random.seed() # In case any randomization is used.
+        model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
+                           max_iter=self.max_iter, per_trial=self.per_trial, N=self.N)
+        model.fit(self.X, self.W)
+        if self.verbose:
+            print('Job for thresh1 = ' + str(thresh1) + ' and thresh2 = ' + str(thresh2) + ' finished.')
+        return parameters, model
 
     def fit(self, X, W):
         self.X = X
         self.W = W
+        if self.ncpu is None:
+            self.ncpu = os.cpu_count()
         ##########
+        # Default grid values
         if self.method == 'thresh_naive':
             if self.thresh1_grid is None:
                 self.thresh1_grid = np.arange(0.0, 0.201, 0.01)
@@ -598,13 +617,27 @@ class SparseNNLSGrid:
                 self.thresh2_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
         else:
             raise ValueError('Invalid method for SparseNNLSGrid.')
-
-        self.models_grid = {}
-        for thresh1 in self.thresh1_grid:
-            for thresh2 in self.thresh2_grid:
-                model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
-                                   max_iter=self.max_iter, per_trial=self.per_trial, N=self.N)
-                model.fit(self.X, self.W)
-                self.models_grid[(thresh1, thresh2)] = model
+        ##########
+        # Calculations
+        if self.ncpu == 1:
+            self.models_grid = {}
+            for thresh1 in self.thresh1_grid:
+                for thresh2 in self.thresh2_grid:
+                    model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
+                                       max_iter=self.max_iter, per_trial=self.per_trial, N=self.N)
+                    model.fit(self.X, self.W)
+                    self.models_grid[(thresh1, thresh2)] = model
+        else:
+            parameters = []
+            for thresh1 in self.thresh1_grid:
+                for thresh2 in self.thresh2_grid:
+                    parameters.append((thresh1, thresh2))
+            workers = multiprocessing.Pool(self.ncpu)
+            results = workers.map(self._job, parameters)
+            workers.close()
+            workers.join()
+            self.models_grid = {}
+            for item in results:
+                self.models_grid[item[0]] = item[1]
 
         return self
