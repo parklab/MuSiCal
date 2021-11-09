@@ -93,7 +93,7 @@ def nnls_thresh(x, W, thresh=0.05, thresh_agnostic=0.0):
     return h
 
 
-def _multinomial_loglikelihood(x, p, epsilon=1e-16):
+def _multinomial_loglikelihood(x, p, epsilon=1e-16, per_trial=False):
     """Log likelihood of multinomial distribution: logP(x|p).
 
     Parameters
@@ -113,10 +113,13 @@ def _multinomial_loglikelihood(x, p, epsilon=1e-16):
     p = p.astype(float)  # In case p is of type int
     p = p.clip(epsilon)
     p = p/np.sum(p)
-    return np.sum(x*np.log(p))
+    if per_trial:
+        return np.sum(x*np.log(p))/np.sum(x)
+    else:
+        return np.sum(x*np.log(p))
 
 
-def nnls_likelihood_backward(x, W, thresh=10.0):
+def nnls_likelihood_backward(x, W, thresh=10.0, per_trial=False):
     """Likelihood NNLS with backward stepwise trimming
 
     An initial NNLS is first done. Then we trim the exposure vector in a
@@ -145,14 +148,14 @@ def nnls_likelihood_backward(x, W, thresh=10.0):
             h, _ = sp.optimize.nnls(W[:, indices_retained], x)
             p_current = W[:, indices_retained] @ h
             p_current = p_current/np.sum(p_current)
-            loglikelihood_current = _multinomial_loglikelihood(x, p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
             loglikelihoods = []
             # Log likelihoods of model that removes 1 signature
             for index in indices_retained:
                 _indices = np.array([i for i in indices_retained if i != index])
                 p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
                 p = p/np.sum(p)
-                loglikelihoods.append(_multinomial_loglikelihood(x, p))
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
             loglikelihoods = np.array(loglikelihoods)
             # Log likelihood ratios
             loglikelihoods = loglikelihood_current - loglikelihoods
@@ -168,7 +171,7 @@ def nnls_likelihood_backward(x, W, thresh=10.0):
     return h
 
 
-def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.0, max_iter=1000):
+def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.0, max_iter=1000, per_trial=False):
     """Likelihood NNLS with both backward and forward stepwise rountines.
 
     Notes:
@@ -198,14 +201,14 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.
             h, _ = sp.optimize.nnls(W[:, indices_retained], x)
             p_current = W[:, indices_retained] @ h
             p_current = p_current/np.sum(p_current)
-            loglikelihood_current = _multinomial_loglikelihood(x, p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
             loglikelihoods = []
             # Log likelihoods of model that removes 1 signature
             for index in indices_retained:
                 _indices = np.array([i for i in indices_retained if i != index])
                 p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
                 p = p/np.sum(p)
-                loglikelihoods.append(_multinomial_loglikelihood(x, p))
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
             loglikelihoods = np.array(loglikelihoods)
             # Log likelihood ratios
             loglikelihoods = loglikelihood_current - loglikelihoods
@@ -227,14 +230,14 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.
             h, _ = sp.optimize.nnls(W[:, indices_retained], x)
             p_current = W[:, indices_retained] @ h
             p_current = p_current/np.sum(p_current)
-            loglikelihood_current = _multinomial_loglikelihood(x, p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
             loglikelihoods = []
             # Log likelihoods of model that adds 1 signature
             for index in indices_others:
                 _indices = np.sort(np.append(indices_retained, index))
                 p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
                 p = p/np.sum(p)
-                loglikelihoods.append(_multinomial_loglikelihood(x, p))
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
             loglikelihoods = np.array(loglikelihoods)
             # Log likelihood ratios
             loglikelihoods = loglikelihoods - loglikelihood_current
@@ -263,7 +266,7 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.
     return h
 
 
-def nnls_likelihood_backward_legacy(x, W, thresh=10.0):
+def nnls_likelihood_backward_legacy(x, W, thresh=10.0, per_trial=False):
     n_sigs = W.shape[1]
     indices_all = np.arange(0, n_sigs)
     ### Initial NNLS
@@ -278,14 +281,14 @@ def nnls_likelihood_backward_legacy(x, W, thresh=10.0):
             h, _ = sp.optimize.nnls(W[:, indices_retained], x)
             p_current = W[:, indices_retained] @ h
             p_current = p_current/np.sum(p_current)
-            loglikelihood_current = _multinomial_loglikelihood(x, p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
             loglikelihoods = []
             # Log likelihoods of model that removes 1 signature
             for index in indices_retained:
                 _indices = np.array([i for i in indices_all if i != index]) # !!!!!! Difference in here.
                 p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
                 p = p/np.sum(p)
-                loglikelihoods.append(_multinomial_loglikelihood(x, p))
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
             loglikelihoods = np.array(loglikelihoods)
             # Log likelihood ratios
             loglikelihoods = loglikelihood_current - loglikelihoods
@@ -307,12 +310,14 @@ class SparseNNLS:
                  thresh1=None,
                  thresh2=None,
                  max_iter=None,
+                 per_trial=None,
                  N=None
                  ):
         self.method = method
         self.thresh1 = thresh1
         self.thresh2 = thresh2
         self.max_iter = max_iter
+        self.per_trial = per_trial
         self.N = N
 
     def fit(self, X, W):
@@ -371,21 +376,25 @@ class SparseNNLS:
             if self.thresh1 is None:
                 self.thresh1 = 10.0
             self.thresh = self.thresh1
+            if self.per_trial is None:
+                self.per_trial = False
             if self.thresh2 is not None:
                 warnings.warn('Method is chosen as likelihood_backward. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
             self.H = [
-                nnls_likelihood_backward(x, self.W.values, thresh=self.thresh) for x in self._X_in.T.values
+                nnls_likelihood_backward(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_backward_legacy':
             if self.thresh1 is None:
                 self.thresh1 = 10.0
             self.thresh = self.thresh1
+            if self.per_trial is None:
+                self.per_trial = False
             if self.thresh2 is not None:
                 warnings.warn('Method is chosen as likelihood_backward_legacy. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
             self.H = [
-                nnls_likelihood_backward_legacy(x, self.W.values, thresh=self.thresh) for x in self._X_in.T.values
+                nnls_likelihood_backward_legacy(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_bidirectional':
             if self.thresh1 is None:
@@ -396,8 +405,10 @@ class SparseNNLS:
             self.thresh_forward = self.thresh2
             if self.max_iter is None:
                 self.max_iter = 1000
+            if self.per_trial is None:
+                self.per_trial = False
             self.H = [
-                nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter) for x in self._X_in.T.values
+                nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
         else:
             raise ValueError('Invalid method for NNLSSPARSE.')
