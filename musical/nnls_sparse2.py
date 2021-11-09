@@ -266,7 +266,7 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=10.0, thresh_forward=20.
     return h
 
 
-def nnls_likelihood_backward_legacy(x, W, thresh=10.0, per_trial=False):
+def nnls_likelihood_backward_relaxed(x, W, thresh=10.0, per_trial=False):
     n_sigs = W.shape[1]
     indices_all = np.arange(0, n_sigs)
     ### Initial NNLS
@@ -298,6 +298,92 @@ def nnls_likelihood_backward_legacy(x, W, thresh=10.0, per_trial=False):
             else:
                 index_remove = indices_retained[np.argmin(loglikelihoods)]
                 indices_retained = np.array([i for i in indices_retained if i != index_remove])
+    ### Final NNLS
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
+def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=10.0, thresh_forward=20.0, max_iter=1000, per_trial=False):
+    if thresh_backward >= thresh_forward:
+        warnings.warn('thresh_backward is not smaller than thresh_forward. This might lead to indefinite loops.', UserWarning)
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ### Initial NNLS
+    h, _ = sp.optimize.nnls(W, x)
+    indices_retained = indices_all[h > 0]
+    indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+    ### Didirectional loop
+    i_iter = 0
+    while i_iter < max_iter:
+        i_iter += 1
+        ########################## Backward ##########################
+        if len(indices_retained) == 1:
+            backward_stop = True
+        else:
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that removes 1 signature
+            for index in indices_retained:
+                _indices = np.array([i for i in indices_all if i != index]) # !!!!!! Difference in here.
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihood_current - loglikelihoods
+            # Test
+            if np.min(loglikelihoods) >= thresh_backward:
+                backward_stop = True
+                #print(i_iter, 'Remove', backward_stop, None, indices_retained)
+            else:
+                backward_stop = False
+                index_remove = indices_retained[np.argmin(loglikelihoods)]
+                indices_retained = np.array([i for i in indices_retained if i != index_remove])
+                #print(i_iter, 'Remove', backward_stop, index_remove, indices_retained)
+        ########################## Forward ##########################
+        indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+        if len(indices_others) == 0:
+            forward_stop = True
+        else:
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that adds 1 signature
+            for index in indices_others:
+                _indices = np.sort(np.append(indices_retained, index))
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihoods - loglikelihood_current
+            # Test
+            if np.max(loglikelihoods) <= thresh_forward:
+                forward_stop = True
+                #print(i_iter, 'Add', forward_stop, None, indices_retained)
+            else:
+                forward_stop = False
+                index_add = indices_others[np.argmax(loglikelihoods)]
+                indices_retained = np.sort(np.append(indices_retained, index_add))
+                #print(i_iter, 'Add', forward_stop, index_add, indices_retained)
+        ######################## Stopping criterion ########################
+        if backward_stop and forward_stop:
+            break
+        if not backward_stop and not forward_stop and index_remove == index_add:
+            warnings.warn('The same signature is being removed and added back within one iteration, suggesting ill convergence.',
+                          UserWarning)
+            break
+    if i_iter >= max_iter:
+        warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
+                      UserWarning)
     ### Final NNLS
     h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
@@ -384,17 +470,17 @@ class SparseNNLS:
             self.H = [
                 nnls_likelihood_backward(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
-        elif self.method == 'likelihood_backward_legacy':
+        elif self.method == 'likelihood_backward_relaxed':
             if self.thresh1 is None:
                 self.thresh1 = 10.0
             self.thresh = self.thresh1
             if self.per_trial is None:
                 self.per_trial = False
             if self.thresh2 is not None:
-                warnings.warn('Method is chosen as likelihood_backward_legacy. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
+                warnings.warn('Method is chosen as likelihood_backward_relaxed. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
             self.H = [
-                nnls_likelihood_backward_legacy(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial) for x in self._X_in.T.values
+                nnls_likelihood_backward_relaxed(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_bidirectional':
             if self.thresh1 is None:
@@ -410,8 +496,22 @@ class SparseNNLS:
             self.H = [
                 nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
             ]
+        elif self.method == 'likelihood_bidirectional_relaxed':
+            if self.thresh1 is None:
+                self.thresh1 = 10.0
+            self.thresh_backward = self.thresh1
+            if self.thresh2 is None:
+                self.thresh2 = 20.0
+            self.thresh_forward = self.thresh2
+            if self.max_iter is None:
+                self.max_iter = 1000
+            if self.per_trial is None:
+                self.per_trial = False
+            self.H = [
+                nnls_likelihood_bidirectional_relaxed(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
+            ]
         else:
-            raise ValueError('Invalid method for NNLSSPARSE.')
+            raise ValueError('Invalid method for SparseNNLS.')
         ##########
         # If a rescale factor is used, convert back to the original scale.
         # A final NNLS is needed constraining to only active signatures.
