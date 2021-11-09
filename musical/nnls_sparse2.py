@@ -6,6 +6,7 @@ import scipy as sp
 from sklearn.metrics import pairwise_distances
 import scipy.stats as stats
 import warnings
+from sklearn.preprocessing import normalize
 
 
 def _fill_vector(x, indices, L):
@@ -315,9 +316,11 @@ class SparseNNLS:
         self.N = N
 
     def fit(self, X, W):
-        self.X_input = X
-        self.W_input = W
+        # Save original input data
+        self.X_original = X
+        self.W_original = W
         ##########
+        # Convert input to appropriate data types.
         if isinstance(W, pd.DataFrame):
             self.W = W
             self.sigs_all = self.W.columns.values
@@ -334,12 +337,16 @@ class SparseNNLS:
                 self.X = pd.DataFrame(X, columns=['Sample' + str(i) for i in range(0, X.shape[1])], index=self.W.index)
             self.samples = self.X.columns.values
         ##########
+        # If a rescale factor is used, rescale data.
         if self.N is not None:
             if type(self.N) is not int:
                 raise ValueError('N must be an integer.')
-            self.X = self.X * self.N
-            self.X = self.X.round(0).astype(int)
+            self._X_in = self.X * self.N
+            self._X_in = self._X_in.round(0).astype(int)
+        else:
+            self._X_in = self.X
         ##########
+        # NNLS
         if self.method == 'thresh_naive':
             if self.thresh1 is None:
                 self.thresh1 = 0.05
@@ -348,7 +355,7 @@ class SparseNNLS:
                 self.thresh2 = 0.0
             self.thresh_agnostic = self.thresh2
             self.H = [
-                nnls_thresh_naive(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic) for x in self.X.T.values
+                nnls_thresh_naive(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic) for x in self._X_in.T.values
             ]
         elif self.method == 'thresh':
             if self.thresh1 is None:
@@ -358,7 +365,7 @@ class SparseNNLS:
                 self.thresh2 = 0.0
             self.thresh_agnostic = self.thresh2
             self.H = [
-                nnls_thresh(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic) for x in self.X.T.values
+                nnls_thresh(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_backward':
             if self.thresh1 is None:
@@ -368,7 +375,7 @@ class SparseNNLS:
                 warnings.warn('Method is chosen as likelihood_backward. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
             self.H = [
-                nnls_likelihood_backward(x, self.W.values, thresh=self.thresh) for x in self.X.T.values
+                nnls_likelihood_backward(x, self.W.values, thresh=self.thresh) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_backward_legacy':
             if self.thresh1 is None:
@@ -378,7 +385,7 @@ class SparseNNLS:
                 warnings.warn('Method is chosen as likelihood_backward_legacy. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
             self.H = [
-                nnls_likelihood_backward_legacy(x, self.W.values, thresh=self.thresh) for x in self.X.T.values
+                nnls_likelihood_backward_legacy(x, self.W.values, thresh=self.thresh) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_bidirectional':
             if self.thresh1 is None:
@@ -390,11 +397,25 @@ class SparseNNLS:
             if self.max_iter is None:
                 self.max_iter = 1000
             self.H = [
-                nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter) for x in self.X.T.values
+                nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter) for x in self._X_in.T.values
             ]
         else:
             raise ValueError('Invalid method for NNLSSPARSE.')
-
+        ##########
+        # If a rescale factor is used, convert back to the original scale.
+        # A final NNLS is needed constraining to only active signatures.
+        if self.N is not None:
+            tmp = []
+            n_sigs = len(self.sigs_all)
+            indices_all = np.arange(0, n_sigs)
+            for x, h in zip(self.X.T.values, self.H):
+                indices_retained = indices_all[h > 0]
+                h_new, _ = sp.optimize.nnls(self.W.iloc[:, indices_retained], x)
+                h_new = _fill_vector(h_new, indices_retained, n_sigs)
+                tmp.append(h_new)
+            self.H = tmp
+        ##########
+        # Collect final data
         self.H = pd.DataFrame(np.array(self.H).T, index=self.W.columns, columns=self.X.columns)
         self.X_reconstructed = pd.DataFrame(np.array([self.W.values @ h for h in self.H.T.values]).T,
                                             columns=self.X.columns, index=self.X.index)
@@ -409,5 +430,6 @@ class SparseNNLS:
         self.sigs_reduced = self.H.index[self.H.sum(1) > 0].values
         self.W_reduced = pd.DataFrame.copy(self.W[self.sigs_reduced])
         self.H_reduced = pd.DataFrame.copy(self.H.loc[self.sigs_reduced])
+        self.H_reduced_normalized = pd.DataFrame(normalize(self.H_reduced.values, norm='l1', axis=0), index=self.H_reduced.index, columns=self.H_reduced.columns)
 
         return self
