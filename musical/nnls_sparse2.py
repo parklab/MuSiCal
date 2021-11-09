@@ -563,6 +563,8 @@ class SparseNNLSGrid:
         self.N = N
 
     def fit(self, X, W):
+        self.X = X
+        self.W = W
         ##########
         if self.method == 'thresh_naive':
             if self.thresh1_grid is None:
