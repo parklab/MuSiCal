@@ -544,3 +544,65 @@ class SparseNNLS:
         self.H_reduced_normalized = pd.DataFrame(normalize(self.H_reduced.values, norm='l1', axis=0), index=self.H_reduced.index, columns=self.H_reduced.columns)
 
         return self
+
+
+class SparseNNLSGrid:
+    def __init__(self,
+                 method='likelihood_bidirectional',
+                 thresh1_grid=None,
+                 thresh2_grid=None,
+                 max_iter=None,
+                 per_trial=None,
+                 N=None
+                 ):
+        self.method = method
+        self.thresh1_grid = thresh1_grid
+        self.thresh2_grid = thresh2_grid
+        self.max_iter = max_iter
+        self.per_trial = per_trial
+        self.N = N
+
+    def fit(self, X, W):
+        ##########
+        if self.method == 'thresh_naive':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.arange(0.0, 0.201, 0.01)
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([0.0])
+        elif self.method == 'thresh':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.arange(0.0, 0.201, 0.01)
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([0.0])
+        elif self.method == 'likelihood_backward':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([None])
+        elif self.method == 'likelihood_backward_relaxed':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([None])
+        elif self.method == 'likelihood_bidirectional':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+        elif self.method == 'likelihood_bidirectional_relaxed':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+        else:
+            raise ValueError('Invalid method for SparseNNLSGrid.')
+
+        self.models_grid = {}
+        for thresh1 in self.thresh1_grid:
+            for thresh2 in self.thresh2_grid:
+                model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
+                                   max_iter=self.max_iter, per_trial=self.per_trial, N=self.N)
+                model.fit(self.X, self.W)
+                self.models_grid[(thresh1, thresh2)] = model
+
+        return self
