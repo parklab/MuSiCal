@@ -173,7 +173,7 @@ def nnls_likelihood_backward(x, W, thresh=0.001, per_trial=True):
     return h
 
 
-def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=0.002, max_iter=1000, per_trial=True):
+def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True):
     """Likelihood NNLS with both backward and forward stepwise rountines.
 
     Notes:
@@ -183,8 +183,10 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=0.
     the code.
     2. Both thresh_backward and thresh_forward should be nonnegative.
     """
-    if thresh_backward >= thresh_forward:
-        warnings.warn('thresh_backward is not smaller than thresh_forward. This might lead to indefinite loops.', UserWarning)
+    if thresh_forward is None:
+        thresh_forward = thresh_backward
+    if thresh_backward > thresh_forward:
+        warnings.warn('thresh_backward is greater thresh_forward. This might lead to indefinite loops.', UserWarning)
     n_sigs = W.shape[1]
     indices_all = np.arange(0, n_sigs)
     ### Initial NNLS
@@ -306,9 +308,11 @@ def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True):
     return h
 
 
-def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_forward=0.002, max_iter=1000, per_trial=True):
-    if thresh_backward >= thresh_forward:
-        warnings.warn('thresh_backward is not smaller than thresh_forward. This might lead to indefinite loops.', UserWarning)
+def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True):
+    if thresh_forward is None:
+        thresh_backward = thresh_forward
+    if thresh_backward > thresh_forward:
+        warnings.warn('thresh_backward is greater than thresh_forward. This might lead to indefinite loops.', UserWarning)
     n_sigs = W.shape[1]
     indices_all = np.arange(0, n_sigs)
     ### Initial NNLS
