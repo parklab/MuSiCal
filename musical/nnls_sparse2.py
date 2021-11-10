@@ -493,7 +493,7 @@ class SparseNNLS:
                 self.thresh1 = 0.001
             self.thresh_backward = self.thresh1
             if self.thresh2 is None:
-                self.thresh2 = 0.002
+                self.thresh2 = None
             self.thresh_forward = self.thresh2
             if self.max_iter is None:
                 self.max_iter = 1000
@@ -507,7 +507,7 @@ class SparseNNLS:
                 self.thresh1 = 0.001
             self.thresh_backward = self.thresh1
             if self.thresh2 is None:
-                self.thresh2 = 0.002
+                self.thresh2 = None
             self.thresh_forward = self.thresh2
             if self.max_iter is None:
                 self.max_iter = 1000
@@ -591,34 +591,34 @@ class SparseNNLSGrid:
         # Default grid values
         if self.method == 'thresh_naive':
             if self.thresh1_grid is None:
-                self.thresh1_grid = np.arange(0.0, 0.201, 0.01)
+                self.thresh1_grid = np.arange(0.0, 0.201, 0.002)
             if self.thresh2_grid is None:
                 self.thresh2_grid = np.array([0.0])
         elif self.method == 'thresh':
             if self.thresh1_grid is None:
-                self.thresh1_grid = np.arange(0.0, 0.201, 0.01)
+                self.thresh1_grid = np.arange(0.0, 0.201, 0.002)
             if self.thresh2_grid is None:
                 self.thresh2_grid = np.array([0.0])
         elif self.method == 'likelihood_backward':
             if self.thresh1_grid is None:
-                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
             if self.thresh2_grid is None:
                 self.thresh2_grid = np.array([None])
         elif self.method == 'likelihood_backward_relaxed':
             if self.thresh1_grid is None:
-                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
             if self.thresh2_grid is None:
                 self.thresh2_grid = np.array([None])
         elif self.method == 'likelihood_bidirectional':
             if self.thresh1_grid is None:
-                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
             if self.thresh2_grid is None:
-                self.thresh2_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+                self.thresh2_grid = np.array([None])
         elif self.method == 'likelihood_bidirectional_relaxed':
             if self.thresh1_grid is None:
-                self.thresh1_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
             if self.thresh2_grid is None:
-                self.thresh2_grid = np.array([0.0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+                self.thresh2_grid = np.array([None])
         else:
             raise ValueError('Invalid method for SparseNNLSGrid.')
         ##########
