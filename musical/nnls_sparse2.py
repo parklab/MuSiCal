@@ -310,7 +310,7 @@ def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True):
 
 def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True):
     if thresh_forward is None:
-        thresh_backward = thresh_forward
+        thresh_forward = thresh_backward
     if thresh_backward > thresh_forward:
         warnings.warn('thresh_backward is greater than thresh_forward. This might lead to indefinite loops.', UserWarning)
     n_sigs = W.shape[1]
