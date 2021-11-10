@@ -624,13 +624,17 @@ class SparseNNLSGrid:
         ##########
         # Calculations
         if self.ncpu == 1:
-            self.models_grid = {}
+            #self.models_grid = {}
+            self.H_reduced_grid = {}
+            self.W_reduced_grid = {}
             for thresh1 in self.thresh1_grid:
                 for thresh2 in self.thresh2_grid:
                     model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
                                        max_iter=self.max_iter, per_trial=self.per_trial, N=self.N)
                     model.fit(self.X, self.W)
-                    self.models_grid[(thresh1, thresh2)] = model
+                    #self.models_grid[(thresh1, thresh2)] = model
+                    self.H_reduced_grid[(thresh1, thresh2)] = model.H_reduced
+                    self.W_reduced_grid[(thresh1, thresh2)] = model.W_reduced
         else:
             parameters = []
             for thresh1 in self.thresh1_grid:
@@ -640,8 +644,13 @@ class SparseNNLSGrid:
             results = workers.map(self._job, parameters)
             workers.close()
             workers.join()
-            self.models_grid = {}
+            #self.models_grid = {}
+            self.H_reduced_grid = {}
+            self.W_reduced_grid = {}
             for item in results:
-                self.models_grid[item[0]] = item[1]
+                #self.models_grid[item[0]] = item[1]
+                self.H_reduced_grid[item[0]] = item[1].H_reduced
+                self.W_reduced_grid[item[0]] = item[1].W_reduced
+
 
         return self
