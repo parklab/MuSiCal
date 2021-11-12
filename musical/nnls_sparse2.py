@@ -220,11 +220,13 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=No
             if np.min(loglikelihoods) >= thresh_backward:
                 backward_stop = True
                 #print(i_iter, 'Remove', backward_stop, None, indices_retained)
+                #print(np.min(loglikelihoods))
             else:
                 backward_stop = False
                 index_remove = indices_retained[np.argmin(loglikelihoods)]
                 indices_retained = np.array([i for i in indices_retained if i != index_remove])
                 #print(i_iter, 'Remove', backward_stop, index_remove, indices_retained)
+                #print(np.min(loglikelihoods))
         ########################## Forward ##########################
         indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
         if len(indices_others) == 0:
@@ -249,11 +251,13 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=No
             if np.max(loglikelihoods) <= thresh_forward:
                 forward_stop = True
                 #print(i_iter, 'Add', forward_stop, None, indices_retained)
+                #print(np.max(loglikelihoods))
             else:
                 forward_stop = False
                 index_add = indices_others[np.argmax(loglikelihoods)]
                 indices_retained = np.sort(np.append(indices_retained, index_add))
                 #print(i_iter, 'Add', forward_stop, index_add, indices_retained)
+                #print(np.max(loglikelihoods))
         ######################## Stopping criterion ########################
         if backward_stop and forward_stop:
             break
