@@ -99,7 +99,7 @@ def _set_size(w, h, ax=None):
 def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
                 xlabel="", ylabel="", tick_fontsize=12, label_fontsize=14,
                 colors=None, ylim=None, xticklabels=False, xticks=True, yticks=None, rotation=90, ha="center",
-                outfile=None, fix_size=False, sig_type='SBS'):
+                outfile=None, fix_size=False, sig_type='SBS', axis_linewidth=None, tick_font='monospace'):
     """Bar plot for signatures.
 
     sig can be a single n_features dimensional vector, in which case a single plot will
@@ -228,9 +228,12 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
             subfig.spines['top'].set_visible(False)
             subfig.spines['bottom'].set_color('k')
             subfig.spines['left'].set_color('k')
+            if axis_linewidth is not None:
+                for axis in ['top','bottom','left','right']:
+                    subfig.spines[axis].set_linewidth(axis_linewidth)
             _set_size(figsize[0], figsize[1], ax=subfig)
             for tick in subfig.get_xticklabels():
-                tick.set_fontname('monospace')
+                tick.set_fontname(tick_font)
             for tick in subfig.get_yticklabels():
                 tick.set_fontname('Arial')
             subfig.set_xlabel(xlabel, fontsize=label_fontsize)
@@ -267,8 +270,11 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
             subfig.spines['top'].set_visible(False)
             subfig.spines['bottom'].set_color('k')
             subfig.spines['left'].set_color('k')
+            if axis_linewidth is not None:
+                for axis in ['top','bottom','left','right']:
+                    subfig.spines[axis].set_linewidth(axis_linewidth)
             for tick in subfig.get_xticklabels():
-                tick.set_fontname('monospace')
+                tick.set_fontname(tick_font)
             for tick in subfig.get_yticklabels():
                 tick.set_fontname('Arial')
             subfig.set_xlabel(xlabel, fontsize=label_fontsize)
@@ -292,6 +298,8 @@ def sigplot_bar(sig, norm=True, figsize=None, title=None, width=0.8,
 
     if outfile is not None:
         plt.savefig(outfile, bbox_inches='tight')
+
+    return fig
 
 
 def plot_silhouettes(model,  title_tag=None, plotpvalues=True,

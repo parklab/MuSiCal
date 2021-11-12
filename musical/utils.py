@@ -10,6 +10,8 @@ import scipy.stats as stats
 from operator import itemgetter
 from sklearn.preprocessing import normalize
 
+from .nnls_sparse import nnls_sparse
+
 ##################
 # Useful globals #
 ##################
@@ -347,9 +349,11 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     top = data[0][0] # Index of the top matched signature.
     combs = [] # All signature combinations to be tested.
     if include_top:
+        combs.extend([(top,)]) # First, include singlets
         sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
         combs.extend([(top, sig) for sig in sigs_notop])
     else:
+        combs.extend([(sig,) for sig in sigs]) # First, include singlets
         combs.extend(list(itertools.combinations(sigs, 2)))
     # Then, perform NNLS on all combinations to be tested, and select the best combination based on residual error.
     data = []
@@ -371,7 +375,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     ##################### Triplets ####################
     ###################################################
     ### Otherwise, consider triplets
-    combs = []
+    #combs = []
     if include_top:
         sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
         combs.extend([(top,) + item for item in list(itertools.combinations(sigs_notop, 2))])
@@ -390,6 +394,21 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
         cos = 1 - sp.spatial.distance.cosine(w, np.dot(W_catalog[:, list(match)], coef))
         return match, cos, coef
     return (), np.nan, None
+
+
+def match_signature_to_catalog_nnls_sparse(w, W_catalog, N=10000, method='llh_stepwise',
+                                           frac_thresh_base=0.02, frac_thresh_keep=0.4,
+                                           frac_thresh=0.05, llh_thresh=0.65, exp_thresh=8.):
+    x = np.rint(w*N).astype(int)
+    h = nnls_sparse(x, W_catalog, method=method,
+                    frac_thresh_base=frac_thresh_base, frac_thresh_keep=frac_thresh_keep,
+                    frac_thresh=frac_thresh, llh_thresh=llh_thresh, exp_thresh=exp_thresh)
+
+    match = np.arange(0, W_catalog.shape[1])[h > 0]
+    coef, _ = sp.optimize.nnls(W_catalog[:, match], w)
+    cos = 1 - sp.spatial.distance.cosine(w, W_catalog[:, match] @ coef)
+    return tuple(match), cos, coef
+
 
 def tag_similar_signatures(W, metric = 'cosine'):
     pdist = pairwise_distances(W.T, metric = metric)
@@ -496,3 +515,131 @@ def parallelotope_volume(X):
                 )
             )
     return v
+
+
+def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
+    """
+    Parameters:
+    ----------
+    confusion_matrix : np.ndarray
+        Cannot be pd.DataFrame
+    P : list
+        Real positives
+    PP : list
+        Predicted positives
+    All : list
+        All labels, i.e., P + N
+    """
+    if confusion_matrix is None:
+        if P is None or PP is None or All is None:
+            raise ValueError('When confusion matrix is not provided, P, PP, and All must be provided.')
+        P = set(P)
+        PP = set(PP)
+        All = set(All)
+        ###
+        N = All - P
+        PN = All - PP
+        TP = PP.intersection(P)
+        TN = PN.intersection(N)
+        ###
+        nP = len(P)
+        nN = len(N)
+        nPP = len(PP)
+        nPN = len(PN)
+        nTP = len(TP)
+        nFP = nPP - nTP
+        nTN = len(TN)
+        nFN = nPN - nTN
+        confusion_matrix = np.array([[nTP, nFN], [nFP, nTN]])
+    else:
+        if P is not None or PP is not None or All is not None:
+            warnings.warn('Confusion matrix is provided. The provided P, PP, or All are ignored.',
+                          UserWarning)
+        if confusion_matrix.shape != (2, 2):
+            raise ValueError('Confusion matrix is not of the correct shape.')
+        nTP = confusion_matrix[0, 0]
+        nFN = confusion_matrix[0, 1]
+        nFP = confusion_matrix[1, 0]
+        nTN = confusion_matrix[1, 1]
+        nP = nTP + nFN
+        nN = nFP + nTN
+        nPP = nTP + nFP
+        nPN = nFN + nTN
+
+    ######################################
+    statistics = {
+        "P": nP,
+        "N": nN,
+        "PP": nPP,
+        "PN": nPN,
+        "TP": nTP,
+        "TN": nTN,
+        "FP": nFP,
+        "FN": nFN,
+        "ConfusionMatrix": confusion_matrix
+    }
+
+    # Power = sensitivity = recall = true positive rate = TP/P = TP/(TP + FN)
+    if nP == 0:
+        statistics["Power"] = np.nan
+        statistics["Sensitivity"] = np.nan
+        statistics["Recall"] = np.nan
+        statistics["TPR"] = np.nan
+    else:
+        statistics["Power"] = nTP/nP
+        statistics["Sensitivity"] = nTP/nP
+        statistics["Recall"] = nTP/nP
+        statistics["TPR"] = nTP/nP
+    # FDR = FP/(FP + TP)
+    if nFP + nTP == 0:
+        statistics["FDR"] = np.nan
+    else:
+        statistics["FDR"] = nFP/(nFP + nTP)
+    # precision = TP/(TP + FP) = 1 - FDR
+    statistics["Precision"] = 1 - statistics["FDR"]
+    # False positive rate = FP/N = FP/(FP + TN)
+    if nN == 0:
+        statistics["FPR"] = np.nan
+    else:
+        statistics["FPR"] = nFP/nN
+    # Specificity = true negative rate = selectivity = TN/N
+    if nN == 0:
+        statistics["Specificity"] = np.nan
+        statistics["TNR"] = np.nan
+    else:
+        statistics["Specificity"] = nTN/nN
+        statistics["TNR"] = nTN/nN
+    # False negative rate = FN/P = 1 - TPR
+    statistics["FNR"] = 1 - statistics['TPR']
+    # Accuracy = (TP + TN)/(P + N)
+    if nP + nN == 0:
+        statistics["Accuracy"] = np.nan
+    else:
+        statistics["Accuracy"] = (nTP + nTN)/(nP + nN)
+    # Balanced accuracy = (TPR + TNR)/2
+    statistics['BAcc'] = (statistics['TPR'] + statistics['TNR'])/2
+    # F1 score = 2 * precision * recall / (precision + recall)
+    if statistics['Precision'] + statistics['Recall'] > 0:
+        statistics['F1'] = 2 * statistics['Precision'] * statistics['Recall'] / (statistics['Precision'] + statistics['Recall'])
+    else:
+        statistics['F1'] = np.nan
+    # Mathew's correlation coefficient
+    # https://bmcgenomics.biomedcentral.com/track/pdf/10.1186/s12864-019-6413-7.pdf
+    if np.sum(statistics['ConfusionMatrix'] == 0) == 4:
+        statistics['MCC'] = np.nan
+    elif np.sum(statistics['ConfusionMatrix'] == 0) == 3:
+        if nTP != 0 or nTN != 0:
+            statistics['MCC'] = 1
+        elif nFP != 0 or nFN != 0:
+            statistics['MCC'] = -1
+        else: # Won't happen
+            statistics['MCC'] = np.nan
+    else:
+        if (nTP + nFP)*(nTP + nFN)*(nTN + nFP)*(nTN + nFN) == 0:
+            statistics['MCC'] = 0
+        else:
+            statistics['MCC'] = (nTP * nTN - nFP * nFN)/np.sqrt((nTP + nFP)*(nTP + nFN)*(nTN + nFP)*(nTN + nFN))
+    # Normalized MCC
+    statistics['nMCC'] = (statistics['MCC'] + 1)/2
+
+    return statistics
