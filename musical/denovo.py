@@ -534,16 +534,12 @@ class DenovoSig:
                  # Refitting:
                  use_catalog=True,
                  catalog_name='COSMIC_v3p1_SBS_WGS',
-                 thresh_match = [0.99],
-                 thresh_new_sig = [0.84],
-                 min_contribution = [0.1],
-                 include_top = [False],
-                 method_sparse = 'llh',
-                 frac_thresh_base = [0.02],
-                 frac_thresh_keep = [0.4],
-                 frac_thresh = [0.05],
-                 llh_thresh = [0.65],
-                 exp_thresh = [8.],
+                 thresh1_match = [0.010],
+                 thresh2_match = [0.010],
+                 thresh_new_sig = [0.8],
+                 method_sparse = 'likelihood_bidirectional',
+                 thresh1 = [0.001],
+                 thresh2 = [None],
                  features = None
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
@@ -595,16 +591,12 @@ class DenovoSig:
         # Refitting
         self.use_catalog = use_catalog
         self.catalog_name = catalog_name
-        self.thresh_match = thresh_match
+        self.thresh1_match = thresh1_match
+        self.thresh2_match = thresh2_match
         self.thresh_new_sig = thresh_new_sig
-        self.min_contribution = min_contribution
-        self.include_top = include_top
         self.method_sparse = method_sparse
-        self.frac_thresh_base = frac_thresh_base
-        self.frac_thresh_keep = frac_thresh_keep
-        self.frac_thresh = frac_thresh
-        self.llh_thresh = llh_thresh
-        self.exp_thresh = exp_thresh
+        self.thresh1 = thresh1
+        self.thresh2 = thresh2
         self.features = features
 
     def _job(self, parameters):
@@ -996,45 +988,34 @@ class DenovoSig:
     def set_params(self,
                    use_catalog = None,
                    catalog_name = None,
-                   thresh_match = None,
+                   thresh1_match = None,
+                   thresh2_match = None,
                    thresh_new_sig = None,
-                   min_contribution = None,
-                   include_top = None,
                    method_sparse = None,
-                   frac_thresh_base = None,
-                   frac_thresh_keep = None,
-                   frac_thresh = None,
-                   llh_thresh = None,
-                   exp_thresh = None):
-
+                   thresh1 = None,
+                   thresh2 = None):
+ 
         if use_catalog != None:
            self.use_catalog = use_catalog
         if catalog_name != None:
            self.catalog_name = catalog_name
-        if thresh_match != None:
-           self.thresh_match = thresh_match
+        if thresh1_match != None:
+           self.thresh1_match = thresh1_match
+        if thresh2_match != None:
+           self.thresh2_match = thresh2_match
         if thresh_new_sig != None:
            self.thresh_new_sig = thresh_new_sig
-        if min_contribution != None:
-           self.min_contribution = min_contribution
-        if include_top != None:
-            self.include_top = include_top
         if method_sparse != None:
             self.method_sparse = method_sparse
-        if frac_thresh_base != None:
-            self.frac_thresh_base = frac_thresh_base
-        if frac_thresh_keep != None:
-            self.frac_thresh_keep = frac_thresh_keep
-        if frac_thresh != None:
-            self.frac_thresh = frac_thresh
-        if llh_thresh != None:
-            self.llh_thresh = llh_thresh
-        if exp_thresh != None:
-            self.exp_thresh = exp_thresh
+        if thresh1 != None:
+            self.thresh1 = thresh1
+        if thresh2 != None:
+            self.thresh2 = thresh2
 
         return self
 
     def clone_model(self, X_new, grid_index = 1):
+        print(grid_index)
         if grid_index >= self.n_grid:
            ValueError('In clone_model grid_index is out of bounds of n_grid')
 
@@ -1063,55 +1044,39 @@ class DenovoSig:
                               method_sparse = self.method_sparse,
                               features = self.features)
         if self.n_grid > 1:
-            model_new.set_params(frac_thresh_base = [self.frac_thresh_base_all[grid_index]],
-                                  frac_thresh_keep = [self.frac_thresh_keep_all[grid_index]],
-                                  frac_thresh = [self.frac_thresh_all[grid_index]],
-                                  llh_thresh = [self.llh_thresh_all[grid_index]],
-                                  exp_thresh = [self.exp_thresh_all[grid_index]])
+            model_new.set_params(thresh1 = [self.thresh1_all[grid_index]],
+                                 thresh2 = [self.thresh2_all[grid_index]])
         else:
-            model_new.set_params(frac_thresh_base = [self.frac_thresh_base],
-                                  frac_thresh_keep = [self.frac_thresh_keep],
-                                  frac_thresh = [self.frac_thresh],
-                                  llh_thresh = [self.llh_thresh],
-                                  exp_thresh = [self.exp_thresh])
+            model_new.set_params(thresh1 = [self.thresh1],
+                                 thresh2 = [self.thresh2])
 
         if self.use_catalog:
             if self.n_grid > 1:
-                model_new.set_params(thresh_match = [self.thresh_match_all],
-                                     thresh_new_sig = [self.thresh_new_sig_all],
-                                     min_contribution = [self.min_contribution_all],
-                                     include_top = [self.include_top_all])
+                model_new.set_params(thresh1_match = [self.thresh1_match_all[grid_index]],
+                                     thresh2_match = [self.thresh2_match_all[grid_index]],
+                                     thresh_new_sig = [self.thresh_new_sig_all[grid_index]])
             else:
-                model_new.set_params(thresh_match = [self.thresh_match],
-                                     thresh_new_sig = [self.thresh_new_sig],
-                                     min_contribution = [self.min_contribution],
-                                     include_top = [self.include_top])
+                model_new.set_params(thresh1_match = [self.thresh1_match],
+                                    thresh2_match = [self.thresh2_match])
+                
         return model_new
 
 
     def clear_grid(self):
-        if hasattr(self, 'frac_thresh_base_all'):
-            self.frac_thresh_base_all = None
-        if hasattr(self, 'frac_thresh_keep_all'):
-            self.frac_thresh_keep_all = None
-        if hasattr(self, 'llh_thresh_all'):
-            self.llh_thresh_all = None
-        if hasattr(self, 'exp_thresh_all'):
-            self.exp_thresh_all = None
-        if hasattr(self, 'reconstruction_error_s_all'):
-            self.reconstruction_error_s_all = None
-        if hasattr(self, 'thresh_match_all'):
-            self.thresh_match_all= None
+        if hasattr(self, 'thresh1_all'):
+            self.thresh1_all = None
+        if hasattr(self, 'thresh2_all'):
+            self.thresh2_all = None
+        if hasattr(self, 'thresh1_match_all'):
+            self.thresh1_match_all = None
+        if hasattr(self, 'thresh2_match_all'):
+            self.thresh2_match_all = None
         if hasattr(self, 'thresh_new_sig_all'):
             self.thresh_new_sig_all = None
-        if hasattr(self, 'min_contribution_all'):
-            self.min_contribution_all = None
-        if hasattr(self, 'include_top_all'):
-            self.include_top_all = None
         return self
 
-    def run_reassign(self, validation_output_file = None, use_refit = False, clear = True):
-        W_s, H_s, signames, reconstruction_error_s_all, n_grid, frac_thresh_base_all, frac_thresh_keep_all, frac_thresh_all, llh_thresh_all, exp_thresh_all, thresh_match_all, thresh_new_sig_all, min_contribution_all, include_top_all = reassign(self)
+    def run_reassign(self, W_catalog, signatures, clear = True, use_refit = False):
+        W_s, H_s, signames, reconstruction_error_s_all, n_grid, thresh1_all, thresh2_all, thresh1_match_all, thresh2_match_all, thresh_new_sig_all = reassign(self, W_catalog = W_catalog, signatures = signatures)
 
 
         # User might want to keep the same model and do a second reassignment
@@ -1148,24 +1113,20 @@ class DenovoSig:
             self.W_s_all = W_s
             self.H_s_all = H_s
             self.signature_names_all = signames
-            self.frac_thresh_base_all = frac_thresh_base_all
-            self.frac_thresh_all = frac_thresh_all
-            self.frac_thresh_keep_all = frac_thresh_keep_all
-            self.llh_thresh_all = llh_thresh_all
-            self.exp_thresh_all = exp_thresh_all
+            self.thresh1_all = thresh1_all
+            self.thresh2_all = thresh2_all
+            self.thresh_new_sig_all = thresh_new_sig_all
             self.reconstruction_error_s_all = reconstruction_error_s_all
-            if len(thresh_match_all) > 0:
-                 self.thresh_match_all = thresh_match_all
-            if len(thresh_new_sig_all):
+            if len(thresh1_match_all) > 0:
+                 self.thresh1_match_all = thresh1_match_all
+            if len(thresh2_match_all) > 0:
+                 self.thresh2_match_all = thresh2_match_all
+            if len(thresh_new_sig_all) > 0:
                 self.thresh_new_sig_all = thresh_new_sig_all
-            if len(min_contribution_all):
-                self.min_contribution_all = min_contribution_all
-            if len(include_top_all) > 0:
-                self.include_top_all = include_top_all
         return self
 
-    def validate_assignment(self, validation_output_file = None, use_refit = False, clear_grid = False):
-        W_simul, H_simul, X_simul, best_grid_index, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self, validation_output_file = validation_output_file, use_refit = use_refit)
+    def validate_assignment(self, use_refit = False, clear_grid = False):
+        W_simul, H_simul, X_simul, best_grid_index, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self,  use_refit = use_refit)
         self.W_simul = W_simul
         self.H_simul = H_simul
         self.X_simul = X_simul
@@ -1182,16 +1143,11 @@ class DenovoSig:
             self.W_s = self.W_s_all[best_grid_index]
             self.H_s = self.H_s_all[best_grid_index]
             self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index]
-            self.set_params(frac_thresh_base = [self.frac_thresh_base_all[best_grid_index]],
-                            frac_thresh_keep = [self.frac_thresh_keep_all[best_grid_index]],
-                            frac_thresh = [self.frac_thresh_all[best_grid_index]],
-                            llh_thresh = [self.llh_thresh_all[best_grid_index]],
-                            exp_thresh = [self.exp_thresh_all[best_grid_index]])
-            if self.use_catalog:
-                self.set_params(thresh_match = [self.thresh_match_all[best_grid_index]],
-                                thresh_new_sig = [self.thresh_new_sig_all[best_grid_index]],
-                                min_contribution = [self.min_contribution_all[best_grid_index]],
-                                include_top = [self.include_top_all[best_grid_index]])
+            self.set_params(thresh1 = [self.thresh1_all[best_grid_index]],
+                            thresh2 = [self.thresh2_all[best_grid_index]],
+                            thresh1_match = [self.thresh1_match[best_grid_index]],
+                            thresh2_match = [self.thresh2_match_all[best_grid_index]],
+                            thresh_new_sig = [self.thresh_new_sig_all[best_grid_index]])
 
         if clear_grid:
             self.clear_grid()

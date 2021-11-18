@@ -3,7 +3,6 @@ import pickle
 from .utils import beta_divergence, simulate_count_matrix, match_catalog_pair
 
 def validate(model, 
-             validation_output_file = None, 
              use_refit = False, 
              metric_dist = 'cosine' # for use_refit 'euclidean' might be better
         ): 
@@ -21,11 +20,7 @@ def validate(model,
     You can validate a table without running refitting by simply
     creating a model and setting W_s and H_s values to a table of your choosing
     """
-    if validation_output_file is not None:
-       list_models_simul = {}
-       save_models = True
-    else:
-       save_models = False
+    save_models = False
 
     dist_W_all = {}
     dists_per_sig_all = {}
@@ -42,7 +37,11 @@ def validate(model,
         for i in range(0, model.n_grid):
             W_s_this = model.W_s_all[i]
             H_s_this = model.H_s_all[i]
+            print(W_s_this.shape)
+            print(H_s_this.shape)
+            
             X_simul_this = simulate_count_matrix(W_s_this, H_s_this)
+            print(X_simul_this.shape)
             model_simul = model.clone_model(X_simul_this, grid_index = i)
             if use_refit:
                 model_simul.W = model.W_s_all[i]
@@ -93,9 +92,6 @@ def validate(model,
         dist_max = dist_max_all[best_grid_index]
         dist_max_sig_index = dist_max_sig_index_all[best_grid_index]
 
-        if save_models: # if output file is specified saves the list of simulated data 
-            with open(validation_output_file, 'wb') as f:
-                pickle.dump(list_models_simul, f, pickle.HIGHEST_PROTOCOL)
 
     else:  # if there was no grid search
         best_grid_index = None
