@@ -1145,7 +1145,7 @@ class DenovoSig:
             self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index]
             self.set_params(thresh1 = [self.thresh1_all[best_grid_index]],
                             thresh2 = [self.thresh2_all[best_grid_index]],
-                            thresh1_match = [self.thresh1_match[best_grid_index]],
+                            thresh1_match = [self.thresh1_match_all[best_grid_index]],
                             thresh2_match = [self.thresh2_match_all[best_grid_index]],
                             thresh_new_sig = [self.thresh_new_sig_all[best_grid_index]])
 
