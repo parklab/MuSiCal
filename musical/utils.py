@@ -418,17 +418,9 @@ def match_signature_to_catalog_nnls_sparse2(w, W_catalog, method='likelihood_bid
                                thresh2 = thresh2)
     sparse_method.fit(X= w, W = W_catalog)
     h = np.transpose(np.array(sparse_method.H))
-    print(h)
-    print(np.where(h > 0))
-    print(np.arange(0, W_catalog.shape[1]))
-    print(np.arange(0, W_catalog.shape[1])[np.where(h > 0)[1]])
     match = np.arange(0, W_catalog.shape[1])[np.where(h > 0)[1]]
     coef, _ = sp.optimize.nnls(W_catalog[:, match], w)
     cos = 1 - sp.spatial.distance.cosine(w, W_catalog[:, match] @ coef)
-    print('match')
-    print(match)
-    print(coef)
-    print(cos)
     return tuple(match), cos, coef
 
 
