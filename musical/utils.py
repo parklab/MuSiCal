@@ -248,7 +248,7 @@ def bootstrap_count_matrix(X):
     X_bootstrapped = []
     for x in X.T:
         N = int(round(np.sum(x)))
-        p = x/np.sum(x)
+        p = np.ravel(x/np.sum(x))
         X_bootstrapped.append(np.random.multinomial(N, p))
         #indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
         #X_bootstrapped.append([np.sum(indices == i)
