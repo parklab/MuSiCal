@@ -100,7 +100,7 @@ def validate(model,
         
         # if possible avoid assigning new signatures if the solution without new signatures replace best index
         best_grid_indices = np.where(dist_max_all < min_dist + 0.02)[0] # should we convert this into a parameter or keep it fixed
-        indices_without_new_sigs = np.where(np.char.find('Sig_N0', model.signature_names_all) == -1)[0]
+        indices_without_new_sigs = np.where(np.char.find('Sig_N0', model.signature_names_all[i]) == -1)[0]
         print('indices_without_new_sigs')
         print(indices_without_new_sigs)
         best_indices_without_new_sigs = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
