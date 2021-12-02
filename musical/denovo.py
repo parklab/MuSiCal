@@ -1126,11 +1126,12 @@ class DenovoSig:
         return self
 
     def validate_assignment(self, use_refit = False, clear_grid = False):
-        W_simul, H_simul, X_simul, best_grid_index, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self,  use_refit = use_refit)
+        W_simul, H_simul, X_simul, best_grid_index, best_grid_indices, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self,  use_refit = use_refit)
         self.W_simul = W_simul
         self.H_simul = H_simul
         self.X_simul = X_simul
         self.best_grid_index = best_grid_index
+        self.best_grid_indices = best_grid_indices
         self.error_W_simul = error_W
         self.error_H_simul = error_H
         self.dist_W_simul = dist_W
@@ -1142,6 +1143,7 @@ class DenovoSig:
         if self.n_grid > 1:
             self.W_s = self.W_s_all[best_grid_index]
             self.H_s = self.H_s_all[best_grid_index]
+            self.signature_names = self.signature_names_all[best_grid_index]
             self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index]
             self.set_params(thresh1 = [self.thresh1_all[best_grid_index]],
                             thresh2 = [self.thresh2_all[best_grid_index]],
