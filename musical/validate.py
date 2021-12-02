@@ -99,7 +99,7 @@ def validate(model,
 #        best_grid_index = dist_max_all.index(min(dist_max_all))
         
         # if possible avoid assigning new signatures if the solution without new signatures replace best index
-        best_grid_indices = np.where(dist_max_all < min_dist + 0.02)[0] # should we convert this into a parameter or keep it fixed
+        best_grid_indices = np.where(dist_max_all < min_dist + 0.02 * model.W.shape[1])[0] # should we convert this into a parameter or keep it fixed
         indices_without_new_sigs = np.where(np.char.find('Sig_N0', model.signature_names_all[i]) == -1)[0]
         
         
@@ -115,7 +115,7 @@ def validate(model,
             min_error_H = np.min(np.array(error_H_all)[best_grid_indices])
             best_grid_index = np.array(best_grid_indices)[np.array(error_H_all)[best_grid_indices] == min_error_H]
 
-        best_grid_index = np.asscallar(best_grid_index)
+        best_grid_index = np.asscalar(best_grid_index)
         
         W_simul = W_simul_all[best_grid_index]
         H_simul = H_simul_all[best_grid_index]
