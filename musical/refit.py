@@ -252,8 +252,8 @@ def reassign(model, W_catalog, signatures):  # maybe we should move this functio
     n_grid = index_param
     for i in range(n_grid):
         W_s[i] = W_s[i][:, np.sum(H_s[i], axis = 1) > 0]
-        H_s[i] = H_s[i][np.sum(H_s[i], axis = 1) > 0, :]
         signames[i] = signames[i][ np.sum(H_s[i], axis = 1) > 0]
+        H_s[i] = H_s[i][np.sum(H_s[i], axis = 1) > 0, :]
 
     
     return W_s, H_s, signames, reconstruction_error_s_all, n_grid, thresh1_all, thresh2_all, thresh1_match_all, thresh2_match_all, thresh_new_sig_all
