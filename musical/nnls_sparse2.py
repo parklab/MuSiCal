@@ -274,6 +274,86 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=No
     return h
 
 
+def nnls_cosine_bidirectional(x, W, thresh_backward=0.01, thresh_forward=None, max_iter=1000):
+    if thresh_forward is None:
+        thresh_forward = thresh_backward
+    if thresh_backward > thresh_forward:
+        warnings.warn('thresh_backward is greater thresh_forward. This might lead to indefinite loops.', UserWarning)
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ### Initial NNLS
+    h, _ = sp.optimize.nnls(W, x)
+    indices_retained = indices_all[h > 0]
+    indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+    ### Didirectional loop
+    i_iter = 0
+    while i_iter < max_iter:
+        i_iter += 1
+        ########################## Backward ##########################
+        if len(indices_retained) == 1:
+            backward_stop = True
+        else:
+            # cosine similarity of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            cosine_current = 1 - sp.spatial.distance.cosine(x, p_current)
+            cosines = []
+            # cosine similarity of model that removes 1 signature
+            for index in indices_retained:
+                _indices = np.array([i for i in indices_retained if i != index])
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                cosines.append(1 - sp.spatial.distance.cosine(x, p))
+            cosines = np.array(cosines)
+            # cosine differences
+            cosines = cosine_current - cosines
+            # Test
+            if np.min(cosines) >= thresh_backward:
+                backward_stop = True
+            else:
+                backward_stop = False
+                index_remove = indices_retained[np.argmin(cosines)]
+                indices_retained = np.array([i for i in indices_retained if i != index_remove])
+        ########################## Forward ##########################
+        indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+        if len(indices_others) == 0:
+            forward_stop = True
+        else:
+            # cosine similarity of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            cosine_current = 1 - sp.spatial.distance.cosine(x, p_current)
+            cosines = []
+            # cosine similarity of model that adds 1 signature
+            for index in indices_others:
+                _indices = np.sort(np.append(indices_retained, index))
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                cosines.append(1 - sp.spatial.distance.cosine(x, p))
+            cosines = np.array(cosines)
+            # cosine differences
+            cosines = cosines - cosine_current
+            # Test
+            if np.max(cosines) <= thresh_forward:
+                forward_stop = True
+            else:
+                forward_stop = False
+                index_add = indices_others[np.argmax(cosines)]
+                indices_retained = np.sort(np.append(indices_retained, index_add))
+        ######################## Stopping criterion ########################
+        if backward_stop and forward_stop:
+            break
+        if not backward_stop and not forward_stop and index_remove == index_add:
+            warnings.warn('The same signature is being removed and added back within one iteration, suggesting ill convergence.',
+                          UserWarning)
+            break
+    if i_iter >= max_iter:
+        warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
+                      UserWarning)
+    ### Final NNLS
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
 def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True):
     n_sigs = W.shape[1]
     indices_all = np.arange(0, n_sigs)
@@ -519,6 +599,18 @@ class SparseNNLS:
                 self.per_trial = True
             self.H = [
                 nnls_likelihood_bidirectional_relaxed(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
+            ]
+        elif self.method == 'cosine_bidirectional':
+            if self.thresh1 is None:
+                self.thresh1 = 0.01
+            self.thresh_backward = self.thresh1
+            if self.thresh2 is None:
+                self.thresh2 = None
+            self.thresh_forward = self.thresh2
+            if self.max_iter is None:
+                self.max_iter = 1000
+            self.H = [
+                nnls_cosine_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter) for x in self._X_in.T.values
             ]
         else:
             raise ValueError('Invalid method for SparseNNLS.')

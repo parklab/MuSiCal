@@ -11,6 +11,7 @@ from operator import itemgetter
 from sklearn.preprocessing import normalize
 
 from .nnls_sparse import nnls_sparse
+from .nnls_sparse2 import SparseNNLS
 
 ##################
 # Useful globals #
@@ -247,7 +248,7 @@ def bootstrap_count_matrix(X):
     X_bootstrapped = []
     for x in X.T:
         N = int(round(np.sum(x)))
-        p = x/np.sum(x)
+        p = np.ravel(x/np.sum(x))
         X_bootstrapped.append(np.random.multinomial(N, p))
         #indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
         #X_bootstrapped.append([np.sum(indices == i)
@@ -400,11 +401,24 @@ def match_signature_to_catalog_nnls_sparse(w, W_catalog, N=10000, method='llh_st
                                            frac_thresh_base=0.02, frac_thresh_keep=0.4,
                                            frac_thresh=0.05, llh_thresh=0.65, exp_thresh=8.):
     x = np.rint(w*N).astype(int)
+
     h = nnls_sparse(x, W_catalog, method=method,
                     frac_thresh_base=frac_thresh_base, frac_thresh_keep=frac_thresh_keep,
                     frac_thresh=frac_thresh, llh_thresh=llh_thresh, exp_thresh=exp_thresh)
-
     match = np.arange(0, W_catalog.shape[1])[h > 0]
+    coef, _ = sp.optimize.nnls(W_catalog[:, match], w)
+    cos = 1 - sp.spatial.distance.cosine(w, W_catalog[:, match] @ coef)
+    return tuple(match), cos, coef
+
+def match_signature_to_catalog_nnls_sparse2(w, W_catalog, method='likelihood_bidirectional',
+                                            thresh1 = 0.001, thresh2 = None):
+    
+    sparse_method = SparseNNLS(method = method,
+                               thresh1 = thresh1,
+                               thresh2 = thresh2)
+    sparse_method.fit(X= w, W = W_catalog)
+    h = np.transpose(np.array(sparse_method.H))
+    match = np.arange(0, W_catalog.shape[1])[np.where(h > 0)[1]]
     coef, _ = sp.optimize.nnls(W_catalog[:, match], w)
     cos = 1 - sp.spatial.distance.cosine(w, W_catalog[:, match] @ coef)
     return tuple(match), cos, coef
