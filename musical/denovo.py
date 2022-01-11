@@ -1126,16 +1126,21 @@ class DenovoSig:
         return self
 
     def validate_assignment(self, use_refit = False, clear_grid = False):
-        W_simul, H_simul, X_simul, best_grid_index, best_grid_indices, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self,  use_refit = use_refit)
+        W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, error_W, error_H, dist_W, dist_max, dist_max_sum, dist_max_sig_index, dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, _, _, _, _ = validate(self,  use_refit = use_refit)
+
         self.W_simul = W_simul
         self.H_simul = H_simul
+        self.W_simul_all = W_simul_all
+        self.H_simul_all = H_simul_all
         self.X_simul = X_simul
         self.best_grid_index = best_grid_index
+        self.best_grid_index_sum = best_grid_index_sum
         self.best_grid_indices = best_grid_indices
         self.error_W_simul = error_W
         self.error_H_simul = error_H
         self.dist_W_simul = dist_W
         self.dist_max_simul = dist_max
+        self.dist_max_simul_sum = dist_max_sum
         self.dist_max_simul_sig_index = dist_max_sig_index
         self.dist_max_simul_all = dist_max_all
         self.dist_max_simul_sig_index_all = dist_max_sig_index_all
