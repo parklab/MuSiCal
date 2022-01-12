@@ -48,13 +48,17 @@ def remove_samples_based_on_gini(H, X, gini_baseline = 0.65, gini_delta = 0.005,
 
     if per_signature:
         list_X = {}
+        indices_to_keep_all = np.array(range(0, H.shape[1]))
         for i in inds_columns_to_check[0]:
             X_this = X[:,list_indices_to_keep[i][0]]
             list_X[i] = X_this
-        return(list_X)
+            indices_this = list_indices_to_keep[i][0]
+            indices_to_keep_all = np.array([i for i in indices_to_keep_all if i in indices_this])
+        return(list_X, inds_columns_to_check, list_indices_to_keep, indices_to_keep_all)
     else:
         X_this = np.delete(X, indices_to_remove, axis = 1)
-        return(X_this)
+        indices_to_keep = np.array([i for i in range(0, index)  if i not in indices_to_remove])
+        return(X_this, indices_to_keep)
 
 def identify_distinct_cluster(X, H, frac_thresh=0.05):
     """Identify distinct clusters from the cohort based on exposures.
@@ -252,10 +256,12 @@ def stratify_samples(X, H=None, sil_thresh=0.9,
         i.e., at most 1 cluster with silhouette score < sil_thresh, to accept the full clustering. Otherwise a smaller k might be
         more appropriate. This is a bit more complicated. So we ignore this for now.
     """
+    
     if H is None:
         data = normalize(X, norm='l1', axis=0)
     else:
         data = normalize(H, norm='l1', axis=0)
+        
     n_samples = data.shape[1]
     # Clustering with automatic selection of cluster number
     optimalK = OptimalK(data, max_k=max_k, nrefs=nrefs, metric=metric, linkage_method=linkage_method, ref_method=ref_method)
