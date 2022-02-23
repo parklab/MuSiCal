@@ -33,7 +33,8 @@ def validate(model,
     dist_max_all = []
     dist_sum_all = []
     dist_max_sig_index_all = []
-    
+    nsig = []
+    nsig = np.array(nsig)
     if model.n_grid > 1:
         index = 0
         for i in range(model.n_grid): 
@@ -44,7 +45,8 @@ def validate(model,
             X_simul_this = {}
             W_simul_this = {}
             H_simul_this = {}
-            
+            nsig = np.append(nsig, model.W_s_all[i].shape[1])
+
             for j in range(3): # for the moment repetitions are hardcoded
                 X_simul_this[j] = simulate_count_matrix(W_s_this, H_s_this)
 
@@ -98,20 +100,28 @@ def validate(model,
         
         min_dist = min(dist_max_all)
         min_dist_sum = min(dist_sum_all)
+
+
 #        best_grid_index = dist_max_all.index(min(dist_max_all))
         
         # if possible avoid assigning new signatures if the solution without new signatures replace best index
-                                                     
         best_grid_indices = np.where(dist_max_all < min_dist + 0.02)[0] # should we convert this into a parameter or keep it fixed
-        best_grid_indices_sum = np.where(dist_sum_all < min_dist_sum + 0.02 * model.W.shape[1])[0] # should we convert this into a parameter or keep it fixed
-        
+        best_grid_indices_sum = np.where(dist_sum_all < min_dist_sum + 0.02 * model.W.shape[1])[0] # should we convert this into a parameter or keep it fixed                                         
         indices_without_new_sigs = np.where(np.char.find('Sig_N0', model.signature_names_all[i]) == -1)[0]
 
         best_indices_without_new_sigs = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
         best_indices_without_new_sigs_sum = [index for item,index in enumerate(best_grid_indices_sum) if item in indices_without_new_sigs]
+
+        min_nsig = np.min(nsig[best_indices_without_new_sigs])        
+
+        indices_nsig_min = np.array(best_indices_without_new_sigs)[np.array(nsig)[np.array(best_indices_without_new_sigs)] == min_nsig]
+
+        min_nsig_sum = np.min(nsig[best_indices_without_new_sigs_sum])        
+        indices_nsig_min_sum =  np.array(best_indices_without_new_sigs_sum)[np.array(nsig)[np.array(best_indices_without_new_sigs_sum)] == min_nsig_sum]
                 
         if len(best_indices_without_new_sigs) > 0:
             best_grid_indices = best_indices_without_new_sigs
+                
         if len(best_indices_without_new_sigs_sum) > 0:
             best_grid_indices_sum = best_indices_without_new_sigs_sum
             
@@ -122,14 +132,13 @@ def validate(model,
             min_error_H = np.min(np.array(error_H_all)[best_grid_indices])
             best_grid_index = np.array(best_grid_indices)[np.array(error_H_all)[best_grid_indices] == min_error_H]
 
+        best_grid_index = np.asscalar(best_grid_index)
+
         if use_refit:
             best_grid_index_sum = best_grid_indices_sum[dist_sum_all[best_grid_indices_sum] == min_sum]
         else:
             min_error_H_sum = np.min(np.array(error_H_all)[best_grid_indices_sum])
             best_grid_index_sum = np.array(best_grid_indices_sum)[np.array(error_H_all)[best_grid_indices_sum] == min_error_H_sum]
-
-
-        best_grid_index = np.asscalar(best_grid_index)
         best_grid_index_sum = np.asscalar(best_grid_index_sum)
         
         W_simul = W_simul_all[best_grid_index]
@@ -176,8 +185,8 @@ def validate(model,
 
 
         pdist_comb = [pdist[0], pdist[1], pdist[2]]
-        dist_W = np.diagonal(pdist_comb)
-        dists_per_sig_comb = np.diagonal(np.average(pdist_comb, axis = 0))
+        dist_W = np.diagonal(pdist_comb)        
+        dists_per_sig_comb = np.diagonal(np.average(pdist_comb, axis = 2))
         
         W_simul_comb = [W_simul_this[0], W_simul_this[1], W_simul_this[2]]
         H_simul_comb = [H_simul_this[0], H_simul_this[1], H_simul_this[2]]
@@ -188,8 +197,8 @@ def validate(model,
         H_simul = np.average(H_simul_comb, axis = 0)
                 
         inds_max = np.where(np.max(dists_per_sig_comb) == dists_per_sig_comb)
-        dist_sum = np.sum(dists_per_sig_comb)
         dist_max = np.max(dists_per_sig_comb)
+        dist_sum = np.max(dists_per_sig_comb)
         dist_max_sig_index = inds_max
         dist_W = pdist
         if use_refit:
@@ -199,4 +208,5 @@ def validate(model,
             error_W = beta_divergence(model.W, W_simul, beta = 2)
             error_H = beta_divergence(model.H, H_simul, beta = 2)
         
-    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, error_W, error_H, dist_W, dist_max, dist_max_sum, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
+    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, error_W, error_H, dist_W, dist_max, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
+
