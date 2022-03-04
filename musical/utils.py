@@ -70,6 +70,8 @@ snv_types_96_list = ([["C>A", item] for item in trinucleotides_C] +
                      [["T>C", item] for item in trinucleotides_T] +
                      [["T>G", item] for item in trinucleotides_T])
 
+sigs_associated = [['SBS2','SBS13'], ['SBS17a','SBS17b'], ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']]
+
 # Need to update
 indel_types_83_str = [
  'DEL.C.1.1',
@@ -657,3 +659,38 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
     statistics['nMCC'] = (statistics['MCC'] + 1)/2
 
     return statistics
+
+def get_sig_indices_associated(signatures, signatures_catalog):
+    signatures = np.array(signatures)
+    nsig = signatures.size
+   
+    for entry in sigs_associated:
+        has_entry = False
+        missing_item = []
+        for item in entry:
+            if item in signatures:
+                has_entry = True
+            else:
+                missing_item.append(item)
+
+        if has_entry and len(missing_item) > 0:
+            signatures = np.append(signatures, missing_item)
+
+    signatures = np.sort(signatures)
+    signatures = [item for index,item in enumerate(signatures_catalog) if item in signatures]
+
+    indices_associated = []
+
+    for entry in sigs_associated:
+        indices_this = []
+        has_entry = False
+        for item in entry:
+            if item in signatures:
+                has_entry = True              
+                for i in list(np.where(item == np.array(signatures))[0]):
+                    indices_this.append(i)
+        if has_entry:
+            indices_associated.append(indices_this)
+    
+    return indices_associated, signatures
+
