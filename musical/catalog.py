@@ -27,7 +27,7 @@ CATALOG_NAMES = [
     'MuSiCal_Indel',
 ]
 
-def load_catalog(name='COSMIC_v3p1_SBS_WGS', sep=',', index_col=0):
+def load_catalog(name='COSMIC_v3p2_SBS_WGS_MuSiCal', sep=',', index_col=0):
     """Load saved or custom signature catalog.
 
     Parameters
@@ -56,7 +56,25 @@ def load_catalog(name='COSMIC_v3p1_SBS_WGS', sep=',', index_col=0):
         catalog = Catalog(catalog)
         return catalog
 
-
+def normalize_W_catalog(W, sequencing = 'WES'):
+    weights = pd.read_csv(importlib.resources.open_text(data, 'TriNucFreq_Weights.csv'), sep =',', index_col=0)
+    sequencing_type = weights.columns
+    weights = np.array(weights)
+    weight = weights[:,np.where(np.array(sequencing_type) == sequencing)[0]]
+    weight = np.array(weight)
+    weight = np.ravel(weight)
+    
+    W_norm = []
+    for w in W.T:
+        w = np.array(w)
+        w = np.multiply(w, weight)
+        w = w/np.sum(w)
+        W_norm.append(w)
+        
+    W_norm = np.array(W_norm)
+    W_norm = W_norm.T
+    return(W_norm)
+        
 class Catalog:
     """Class for signature catalog"""
     def __init__(self, W=None, signatures=None, features=None):
