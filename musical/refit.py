@@ -3,12 +3,13 @@
 import numpy as np
 from .nnls import nnls
 from .nnls_sparse2 import SparseNNLS
-from .utils import match_signature_to_catalog_nnls_sparse2, beta_divergence
+from .utils import match_signature_to_catalog_nnls_sparse2, beta_divergence, get_sig_indices_associated
 from .catalog import load_catalog
 
 def refit_matrix(X, W, method = 'likelihood_bidirectional',
                  thresh1 = 0.001,
-                 thresh2 = None):
+                 thresh2 = None,
+                 indices_associated_sigs = None ):
    """
    Refitting each column of the matrix either using nnls or nnls sparse
    If H is None an initial with NNLS an initial H is calculated and
@@ -33,7 +34,8 @@ def refit_matrix(X, W, method = 'likelihood_bidirectional',
    else:
        sparse_method = SparseNNLS(method = method,
                                   thresh1 = thresh1,
-                                  thresh2 = thresh2)
+                                  thresh2 = thresh2,
+                                  indices_associated_sigs = indices_associated_sigs)
        sparse_method.fit(X, W)
        H = sparse_method.H    
    H = np.array(H)
@@ -125,7 +127,7 @@ def get_decomposed_W(W, W_catalog, signatures, thresh1, thresh2, thresh_new_sig)
 
     return W_s, signames
 
-def reassign(model, W_catalog, signatures):  # maybe we should move this function into denovo.py
+def reassign(model, W_catalog, signatures, force_assign_associated = True):  # maybe we should move this function into denovo.py
 
     # We need to write here an if to give error if parameters are not set
 
@@ -211,11 +213,23 @@ def reassign(model, W_catalog, signatures):  # maybe we should move this functio
             for j in np.arange(0, n_params_match): # loop over parameters used in catalog match
                 W_s_this, signames_this = get_decomposed_W(W, W_catalog, signatures, thresh1_match[j], thresh2_match[j], thresh_new_sig[j])
 
+                if force_assign_associated: 
+                    indices_associated_sigs, signames_this_tmp = get_sig_indices_associated(signames_this, signatures)
+                    signames_this_tmp = np.array(signames_this_tmp)
+                    if signames_this.size != signames_this_tmp.size:
+                        signames_this = signames_this_tmp
+                        W_s_this = W_catalog[:,[index for index,item in enumerate(signatures) if item in signames_this]]
+
+                    if signames_this.size == signames_this_tmp.size:
+                        if not (signames_this == signames_this_tmp).all():
+                            signames_this = signames_this_tmp
+                            W_s_this = W_catalog[:,[index for index,item in enumerate(signatures) if item in signames_this]]
 
                 H_s_this, reco_error = refit_matrix(X, W_s_this,
                                                     method = method_sparse,
                                                     thresh1 = thresh1[i],
-                                                    thresh2 = thresh2[i])
+                                                    thresh2 = thresh2[i],
+                                                    indices_associated_sigs = indices_associated_sigs )
                 
                 # a flat paramater array following the same indices as W_s and H_s are generated
                 # to be used in validation step to pick the best parameters once the best W_s and H_s are determined

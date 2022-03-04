@@ -19,7 +19,7 @@ def _fill_vector(x, indices, L):
     return x_filled
 
 
-def nnls_thresh_naive(x, W, thresh=0.05, thresh_agnostic=0.0):
+def nnls_thresh_naive(x, W, thresh=0.05, thresh_agnostic=0.0, indices_associated_sigs=None):
     """Naive thresholded nnls
 
     An initial NNLS is first done. Based on the initial result,
@@ -42,6 +42,12 @@ def nnls_thresh_naive(x, W, thresh=0.05, thresh_agnostic=0.0):
     ###
     if len(indices_retained) == 0:
         indices_retained = np.array([np.argmax(h)])
+
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
     h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
     return h
@@ -121,7 +127,7 @@ def _multinomial_loglikelihood(x, p, epsilon=1e-16, per_trial=True):
         return np.sum(x*np.log(p))
 
 
-def nnls_likelihood_backward(x, W, thresh=0.001, per_trial=True):
+def nnls_likelihood_backward(x, W, thresh=0.001, per_trial=True, indices_associated_sigs=None):
     """Likelihood NNLS with backward stepwise trimming
 
     An initial NNLS is first done. Then we trim the exposure vector in a
@@ -167,13 +173,20 @@ def nnls_likelihood_backward(x, W, thresh=0.001, per_trial=True):
             else:
                 index_remove = indices_retained[np.argmin(loglikelihoods)]
                 indices_retained = np.array([i for i in indices_retained if i != index_remove])
+
+    ### Final NNLS
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
     ### Final NNLS
     h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
     return h
 
 
-def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True):
+def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True, indices_associated_sigs=None):
     """Likelihood NNLS with both backward and forward stepwise rountines.
 
     Notes:
@@ -268,7 +281,12 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=No
     if i_iter >= max_iter:
         warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
                       UserWarning)
-    ### Final NNLS
+    ### Final NNLS                                                               
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
     h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
     return h
@@ -354,7 +372,7 @@ def nnls_cosine_bidirectional(x, W, thresh_backward=0.01, thresh_forward=None, m
     return h
 
 
-def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True):
+def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True, indices_associated_sigs=None):
     n_sigs = W.shape[1]
     indices_all = np.arange(0, n_sigs)
     ### Initial NNLS
@@ -386,13 +404,18 @@ def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True):
             else:
                 index_remove = indices_retained[np.argmin(loglikelihoods)]
                 indices_retained = np.array([i for i in indices_retained if i != index_remove])
-    ### Final NNLS
+    ### Final NNLS                                                                                          
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
     h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
     return h
 
 
-def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True):
+def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True, indices_associated_sigs=None):
     if thresh_forward is None:
         thresh_forward = thresh_backward
     if thresh_backward > thresh_forward:
@@ -474,7 +497,12 @@ def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_fo
     if i_iter >= max_iter:
         warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
                       UserWarning)
-    ### Final NNLS
+    ### Final NNLS                                                                            
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
     h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
     return h
@@ -487,7 +515,8 @@ class SparseNNLS:
                  thresh2=None,
                  max_iter=None,
                  per_trial=None,
-                 N=None
+                 N=None,
+                 indices_associated_sigs=None
                  ):
         self.method = method
         self.thresh1 = thresh1
@@ -495,7 +524,8 @@ class SparseNNLS:
         self.max_iter = max_iter
         self.per_trial = per_trial
         self.N = N
-
+        self.indices_associated_sigs = indices_associated_sigs
+        
     def fit(self, X, W):
         # Save original input data
         self.X_original = X
@@ -536,7 +566,7 @@ class SparseNNLS:
                 self.thresh2 = 0.0
             self.thresh_agnostic = self.thresh2
             self.H = [
-                nnls_thresh_naive(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic) for x in self._X_in.T.values
+                nnls_thresh_naive(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
             ]
         elif self.method == 'thresh':
             if self.thresh1 is None:
@@ -558,7 +588,7 @@ class SparseNNLS:
                 warnings.warn('Method is chosen as likelihood_backward. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
             self.H = [
-                nnls_likelihood_backward(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial) for x in self._X_in.T.values
+                nnls_likelihood_backward(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_backward_relaxed':
             if self.thresh1 is None:
@@ -570,7 +600,7 @@ class SparseNNLS:
                 warnings.warn('Method is chosen as likelihood_backward_relaxed. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
                 self.thresh2 = None
             self.H = [
-                nnls_likelihood_backward_relaxed(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial) for x in self._X_in.T.values
+                nnls_likelihood_backward_relaxed(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_bidirectional':
             if self.thresh1 is None:
@@ -584,7 +614,7 @@ class SparseNNLS:
             if self.per_trial is None:
                 self.per_trial = True
             self.H = [
-                nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
+                nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_bidirectional_relaxed':
             if self.thresh1 is None:
@@ -598,7 +628,7 @@ class SparseNNLS:
             if self.per_trial is None:
                 self.per_trial = True
             self.H = [
-                nnls_likelihood_bidirectional_relaxed(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial) for x in self._X_in.T.values
+                nnls_likelihood_bidirectional_relaxed(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
             ]
         elif self.method == 'cosine_bidirectional':
             if self.thresh1 is None:
@@ -657,7 +687,8 @@ class SparseNNLSGrid:
                  per_trial=None,
                  N=None,
                  ncpu=1,
-                 verbose=0
+                 verbose=0,
+                 indices_associated_sigs=None
                 ):
         self.method = method
         self.thresh1_grid = thresh1_grid
@@ -667,12 +698,15 @@ class SparseNNLSGrid:
         self.N = N
         self.ncpu = ncpu
         self.verbose = verbose
+        self.indices_associated_sigs = indices_associated_sigs
+
 
     def _job(self, parameters):
         thresh1, thresh2 = parameters
         np.random.seed() # In case any randomization is used.
         model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
-                           max_iter=self.max_iter, per_trial=self.per_trial, N=self.N)
+                           max_iter=self.max_iter, per_trial=self.per_trial, N=self.N,
+                           indices_associated_sigs=self.indices_associated_sigs)
         model.fit(self.X, self.W)
         if self.verbose:
             print('Job for thresh1 = ' + str(thresh1) + ' and thresh2 = ' + str(thresh2) + ' finished.')
@@ -726,7 +760,8 @@ class SparseNNLSGrid:
             for thresh1 in self.thresh1_grid:
                 for thresh2 in self.thresh2_grid:
                     model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
-                                       max_iter=self.max_iter, per_trial=self.per_trial, N=self.N)
+                                       max_iter=self.max_iter, per_trial=self.per_trial, N=self.N,
+                                       indices_associated_sigs=self.indices_associated_sigs)
                     model.fit(self.X, self.W)
                     #self.models_grid[(thresh1, thresh2)] = model
                     self.H_reduced_grid[(thresh1, thresh2)] = model.H_reduced
