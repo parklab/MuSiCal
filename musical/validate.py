@@ -69,23 +69,25 @@ def validate(model,
                 if save_models: 
                     list_models_simul[index] = model_simul
   
-                pdist[j] = pdist_this
-                dist_per_sig_this[j] = np.diagonal(pdist_this)
                 index = index + 1
 
-            pdist_comb = [pdist[0], pdist[1], pdist[2]]
-            dists_per_sig_comb = [dist_per_sig_this[0], dist_per_sig_this[1], dist_per_sig_this[2]]
             W_simul_comb = np.array([np.array(W_simul_this[0]), np.array(W_simul_this[1]), np.array(W_simul_this[2])])
             H_simul_comb = np.array([np.array(H_simul_this[0]), np.array(H_simul_this[1]), np.array(H_simul_this[2])])
             X_simul_comb = np.array([np.array(X_simul_this[0]), np.array(X_simul_this[1]), np.array(X_simul_this[2])])
 
-                               
-            dist_W_all[i] = np.average(pdist_comb, axis = 0)
-            dists_per_sig_all[i] = np.average(dists_per_sig_comb, axis = 0)
-            
+                                           
             X_simul_all[i] = np.average(X_simul_comb, axis = 0)
             W_simul_all[i] = np.average(W_simul_comb, axis = 0)
             H_simul_all[i] = np.average(H_simul_comb, axis = 0)
+
+            if use_refit:
+                _, _, pdist_comb = match_catalog_pair(model.H, H_simul_all[i].T, metric = metric_dist)
+            else:
+                _, _, pdist_comb = match_catalog_pair(model.W, W_simul_all[i], metric = metric_dist)
+
+            dist_W_all[i] = pdist_comb
+            dists_per_sig_all[i] = np.diagonal(pdist_comb)
+
             if use_refit:
                 error_W_all.append(beta_divergence(model.W_s_all[i], W_simul_all[i], beta = 2))
                 error_H_all.append(beta_divergence(model.H_s_all[i], H_simul_all[i], beta = 2))
@@ -101,8 +103,6 @@ def validate(model,
         min_dist = min(dist_max_all)
         min_dist_sum = min(dist_sum_all)
 
-
-#        best_grid_index = dist_max_all.index(min(dist_max_all))
         
         # if possible avoid assigning new signatures if the solution without new signatures replace best index
         best_grid_indices = np.where(dist_max_all < min_dist + 0.02)[0] # should we convert this into a parameter or keep it fixed
