@@ -24,7 +24,7 @@ CATALOG_NAMES = [
     'COSMIC_v3p2_SBS_WGS', #https://cancer.sanger.ac.uk/signatures/downloads/
     'COSMIC_v3p2_SBS_WGS_MuSiCal',
     'COSMIC_v3p1_Indel', # https://cancer.sanger.ac.uk/signatures/documents/440/COSMIC_v3.1_ID_GRCh37.txt
-    'MuSiCal_Indel',
+    'MuSiCal_v4_Indel_WGS',
 ]
 
 def load_catalog(name='COSMIC_v3p2_SBS_WGS_MuSiCal', sep=',', index_col=0):
@@ -56,8 +56,12 @@ def load_catalog(name='COSMIC_v3p2_SBS_WGS_MuSiCal', sep=',', index_col=0):
         catalog = Catalog(catalog)
         return catalog
 
-def normalize_W_catalog(W, sequencing = 'WES'):
-    weights = pd.read_csv(importlib.resources.open_text(data, 'TriNucFreq_Weights.csv'), sep =',', index_col=0)
+def normalize_W_catalog(W, sequencing = 'WES', sig_type = 'SBS'):
+    if sig_type == 'SBS':
+        weights = pd.read_csv(importlib.resources.open_text(data, 'TriNucFreq_Weights.csv'), sep =',', index_col=0)
+    else
+        raise ValueError('No weight provided with the specified sig_type')
+    
     sequencing_type = weights.columns
     weights = np.array(weights)
     weight = weights[:,np.where(np.array(sequencing_type) == sequencing)[0]]
@@ -74,7 +78,8 @@ def normalize_W_catalog(W, sequencing = 'WES'):
     W_norm = np.array(W_norm)
     W_norm = W_norm.T
     return(W_norm)
-        
+
+
 class Catalog:
     """Class for signature catalog"""
     def __init__(self, W=None, signatures=None, features=None):
