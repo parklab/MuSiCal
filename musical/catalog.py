@@ -92,15 +92,32 @@ class Catalog:
         elif 'Indel' in self._name:
             self._sig_type = 'Indel'
 
-    def restrict_catalog(self, tumor_type = None, is_MMRD = False, is_POLE = False):
-        if self._sig_type == '':
-            raise ValueError('Supported for SBS and Indel catalogs')
-        tts_sigs = pd.read_csv(importlib.resources.open_text(data, 'TumorType_' + self._sig_type + '_Signatures.csv'), sep =',')
-        
-        tts_sigs = tts_sigs.loc[tts_sigs['tumor_type'] == tumor_type]
-        signatures_tt = np.array(tts_sigs['signatures'])
-        self._signatures = [item for index,item in enumerate(self._signatures) if item in signatures_tt]
-        self._W = self._W[self._signatures]
+    def restrict_catalog(self, tumor_type = None, is_MMRD = False, is_PPD = False):
+        if tumor_type != None:
+            if self._sig_type == '':
+                raise ValueError('Supported for SBS and Indel catalogs')
+            tts_sigs = pd.read_csv(importlib.resources.open_text(data, 'TumorType_' + self._sig_type + '_Signatures.csv'), sep =',')        
+            tts_sigs_selected = tts_sigs.loc[tts_sigs['tumor_type'] == tumor_type]
+            signatures_tt = np.array(tts_sigs_selected['signatures'])
+            tts_sigs_any = tts_sigs.loc[tts_sigs['tumor_type'] == 'any']
+            signatures_any = np.array(tts_sigs_any['signatures'])
+            signatures_tt = np.append(signatures_tt, signatures_any)
+            self._signatures = [item for index,item in enumerate(self._signatures) if item in signatures_tt]
+            self._W = self._W[self._signatures]
+            
+        if not is_MMRD or not is_PPD:
+            MMRD_PPD_sigs = pd.read_csv(importlib.resources.open_text(data, 'MMRD_PPD_' + self._sig_type + '_Signatures.csv'), sep =',')
+            signatures_MMRD = np.array(MMRD_PPD_sigs.loc[MMRD_PPD_sigs['MMRD_PPD_category'] == "MMRD"])
+            signatures_MMRD_PPD = np.array(MMRD_PPD_sigs.loc[MMRD_PPD_sigs['MMRD_PPD_category'] == "MMRD_PPD"])
+            signatures_PPD = np.array(MMRD_PPD_sigs.loc[MMRD_PPD_sigs['MMRD_PPD_category'] == "PPD"])
+            if not is_MMRD:
+                self._signatures = [item for index,item in enumerate(self._signatures) if item not in signatures_MMRD]
+                self._signatures = [item for index,item in enumerate(self._signatures) if item not in signatures_MMRD_PPD]
+                self._W = self._W[self._signatures]
+            if not is_PPD:
+                self._signatures = [item for index,item in enumerate(self._signatures) if item not in signatures_PPD]
+                self._W = self._W[self._signatures]
+
         
     def normalize_W_catalog(self, sequencing = 'WES'):
         W = self._W
