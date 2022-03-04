@@ -49,42 +49,22 @@ def load_catalog(name='COSMIC_v3p2_SBS_WGS_MuSiCal', sep=',', index_col=0):
     """
     if name in CATALOG_NAMES:
         catalog = pd.read_csv(importlib.resources.open_text(data, name + '.csv'), sep=',', index_col=0)
-        catalog = Catalog(catalog)
+        catalog = Catalog(catalog, name = name)
         return catalog
     else:
         catalog = pd.read_csv(name, sep=sep, index_col=index_col)
-        catalog = Catalog(catalog)
+        catalog = Catalog(catalog, name = name)
         return catalog
 
-def normalize_W_catalog(W, sequencing = 'WES', sig_type = 'SBS'):
-    if sig_type == 'SBS':
-        weights = pd.read_csv(importlib.resources.open_text(data, 'TriNucFreq_Weights.csv'), sep =',', index_col=0)
-    else
-        raise ValueError('No weight provided with the specified sig_type')
-    
-    sequencing_type = weights.columns
-    weights = np.array(weights)
-    weight = weights[:,np.where(np.array(sequencing_type) == sequencing)[0]]
-    weight = np.array(weight)
-    weight = np.ravel(weight)
-    
-    W_norm = []
-    for w in W.T:
-        w = np.array(w)
-        w = np.multiply(w, weight)
-        w = w/np.sum(w)
-        W_norm.append(w)
-        
-    W_norm = np.array(W_norm)
-    W_norm = W_norm.T
-    return(W_norm)
 
+        
 
 class Catalog:
     """Class for signature catalog"""
-    def __init__(self, W=None, signatures=None, features=None):
+    def __init__(self, W=None, signatures=None, features=None, name = None):
         if W is None:
             self._W = pd.DataFrame(W)
+            self._name = name
         elif type(W) is pd.DataFrame:
             if signatures is not None:
                 warnings.warn('Columns of W are used as signatures. The provided signatures attribute is ignored.',
@@ -93,20 +73,66 @@ class Catalog:
                 warnings.warn('Index of W is used as features. The provided features attribute is ignored.',
                               UserWarning)
             self._W = W
+            self._name = name
         elif type(W) is np.ndarray:
             if signatures is None:
                 signatures = ['Signature_' + str(i) for i in range(1, W.shape[1] + 1)]
             if features is None:
                 features = ['Feature_' + str(i) for i in range(1, W.shape[0] + 1)]
             self._W = pd.DataFrame(W, columns=signatures, index=features)
+            self._name = name
         else:
             raise ValueError('W must be pd.DataFrame, np.ndarray, or None.')
         self._signatures = self._W.columns.values.tolist()
         self._features = self._W.index.values.tolist()
+        self._W_norm = self._W
+        self._sig_type = ''
+        if 'SBS' in self._name:
+            self._sig_type = 'SBS'
+        elif 'Indel' in self._name:
+            self._sig_type = 'Indel'
+
+    def restrict_catalog(self, tumor_type = None, is_MMRD = False, is_POLE = False):
+        if self._sig_type == '':
+            raise ValueError('Supported for SBS and Indel catalogs')
+        tts_sigs = pd.read_csv(importlib.resources.open_text(data, 'TumorType_' + self._sig_type + '_Signatures.csv'), sep =',')
+        
+        tts_sigs = tts_sigs.loc[tts_sigs['tumor_type'] == tumor_type]
+        signatures_tt = np.array(tts_sigs['signatures'])
+        self._signatures = [item for index,item in enumerate(self._signatures) if item in signatures_tt]
+        self._W = self._W[self._signatures]
+        
+    def normalize_W_catalog(self, sequencing = 'WES'):
+        W = self._W
+        if self._sig_type == 'SBS':
+            weights = pd.read_csv(importlib.resources.open_text(data, 'TriNucFreq_Weights.csv'), sep =',', index_col=0)
+        else:
+            raise ValueError('No weight provided with the specified sig_type')
+    
+        sequencing_type = weights.columns
+        weights = np.array(weights)
+        weight = weights[:,np.where(np.array(sequencing_type) == sequencing)[0]]
+        weight = np.array(weight)
+        weight = np.ravel(weight)
+        W = np.array(W)
+        W_norm = []
+        for w in W.T:
+            w = np.array(w)
+            w = np.multiply(w, weight)
+            w = w/np.sum(w)
+            W_norm.append(w)
+        
+        W_norm = np.array(W_norm)
+        W_norm = W_norm.T
+        self._W_norm = pd.DataFrame(W_norm, columns = self._signatures)
 
     @property
     def W(self):
         return self._W
+
+    @property
+    def W_norm(self):
+        return self._W_norm
 
     @property
     def signatures(self):
