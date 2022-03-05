@@ -106,24 +106,23 @@ def validate(model,
         
         # if possible avoid assigning new signatures if the solution without new signatures replace best index
         best_grid_indices = np.where(dist_max_all < min_dist + 0.02)[0] # should we convert this into a parameter or keep it fixed
-        best_grid_indices_sum = np.where(dist_sum_all < min_dist_sum + 0.02 * model.W.shape[1])[0] # should we convert this into a parameter or keep it fixed                                         
+        best_grid_indices_sum = np.where(dist_sum_all < min_dist_sum + 0.02 * model.W.shape[1])[0] # should we convert this into a parameter or keep it fixed
+        
         indices_without_new_sigs = np.where(np.char.find('Sig_N0', model.signature_names_all[i]) == -1)[0]
-
-        best_indices_without_new_sigs = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
-        best_indices_without_new_sigs_sum = [index for item,index in enumerate(best_grid_indices_sum) if item in indices_without_new_sigs]
-
-        min_nsig = np.min(nsig[best_indices_without_new_sigs])        
-
-        indices_nsig_min = np.array(best_indices_without_new_sigs)[np.array(nsig)[np.array(best_indices_without_new_sigs)] == min_nsig]
-
-        min_nsig_sum = np.min(nsig[best_indices_without_new_sigs_sum])        
-        indices_nsig_min_sum =  np.array(best_indices_without_new_sigs_sum)[np.array(nsig)[np.array(best_indices_without_new_sigs_sum)] == min_nsig_sum]
-                
-        if len(best_indices_without_new_sigs) > 0:
-            best_grid_indices = best_indices_without_new_sigs
-                
+        if len(indices_without_new_sigs) > 0:        
+            best_indices_without_new_sigs = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
+            best_grid_indices = best_indices_withput_new_sigs
         if len(best_indices_without_new_sigs_sum) > 0:
+            best_indices_without_new_sigs_sum = [index for item,index in enumerate(best_grid_indices_sum) if item in indices_without_new_sigs]
             best_grid_indices_sum = best_indices_without_new_sigs_sum
+            
+        min_nsig = np.min(nsig[best_grid_indices])        
+        indices_nsig_min = np.array(best_grid_indices)[np.array(nsig)[np.array(best_grid_indices)] == min_nsig]
+        best_grid_indices = best_grid_indices[indices_nsig_min]
+        
+        min_nsig_sum = np.min(nsig[best_grid_indices_sum])        
+        indices_nsig_min_sum =  np.array(best_grid_indices_sum)[np.array(nsig)[np.array(best_grid_indices_sum)] == min_nsig_sum]
+        best_grid_indices_sum = best_grid_indices_sum[indices_nsig_min_sum]        
             
         # check the error of H
         if use_refit:
