@@ -110,19 +110,16 @@ def validate(model,
         
         indices_without_new_sigs = np.where(np.char.find('Sig_N0', model.signature_names_all[i]) == -1)[0]
         if len(indices_without_new_sigs) > 0:        
-            best_indices_without_new_sigs = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
+            best_grid_indices = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
             best_grid_indices = best_indices_without_new_sigs
         if len(indices_without_new_sigs) > 0:
-            best_indices_without_new_sigs_sum = [index for item,index in enumerate(best_grid_indices_sum) if item in indices_without_new_sigs]
-            best_grid_indices_sum = best_indices_without_new_sigs_sum
+            best_grid_indices_sum = [index for item,index in enumerate(best_grid_indices_sum) if item in indices_without_new_sigs]
             
         min_nsig = np.min(nsig[best_grid_indices])        
-        indices_nsig_min = np.array(best_grid_indices)[np.array(nsig)[np.array(best_grid_indices)] == min_nsig]
-        best_grid_indices = best_grid_indices[indices_nsig_min]
+        best_grid_indices = np.array(best_grid_indices)[np.array(nsig)[np.array(best_grid_indices)] == min_nsig]
         
         min_nsig_sum = np.min(nsig[best_grid_indices_sum])        
-        indices_nsig_min_sum =  np.array(best_grid_indices_sum)[np.array(nsig)[np.array(best_grid_indices_sum)] == min_nsig_sum]
-        best_grid_indices_sum = best_grid_indices_sum[indices_nsig_min_sum]        
+        best_grid_indices_sum =  np.array(best_grid_indices_sum)[np.array(nsig)[np.array(best_grid_indices_sum)] == min_nsig_sum]
             
         # check the error of H
         if use_refit:
