@@ -22,12 +22,12 @@ CATALOG_NAMES = [
     'COSMIC_v3_SBS_WES', # https://dcc.icgc.org/api/v1/download?fn=/PCAWG/mutational_signatures/Signatures/SP_Signatures/SigProfiler_reference_signatures/Sigprofiler_Exome_Signatures/sigProfiler_exome_SBS_signatures.csv
     'COSMIC_v3p1_SBS_WGS', # https://cancer.sanger.ac.uk/sigs-assets-20/COSMIC_Mutational_Signatures_v3.1.xlsx
     'COSMIC_v3p2_SBS_WGS', #https://cancer.sanger.ac.uk/signatures/downloads/
-    'COSMIC_v3p2_SBS_WGS_MuSiCal',
+    'COSMIC-MuSiCal_v3p2_SBS_WGS',
     'COSMIC_v3p1_Indel', # https://cancer.sanger.ac.uk/signatures/documents/440/COSMIC_v3.1_ID_GRCh37.txt
     'MuSiCal_v4_Indel_WGS',
 ]
 
-def load_catalog(name='COSMIC_v3p2_SBS_WGS_MuSiCal', sep=',', index_col=0):
+def load_catalog(name='COSMIC-MuSiCal_v3p2_SBS_WGS', sep=',', index_col=0):
     """Load saved or custom signature catalog.
 
     Parameters
@@ -99,12 +99,13 @@ class Catalog:
             tts_sigs = pd.read_csv(importlib.resources.open_text(data, 'TumorType_' + self._sig_type + '_Signatures.csv'), sep =',')        
             tts_sigs_selected = tts_sigs.loc[tts_sigs['tumor_type'] == tumor_type]
             signatures_tt = np.array(tts_sigs_selected['signatures'])
+            # adding MMRD PPD signatures irrespective of tumor type 
             tts_sigs_any = tts_sigs.loc[tts_sigs['tumor_type'] == 'any']
             signatures_any = np.array(tts_sigs_any['signatures'])
-            signatures_tt = np.append(signatures_tt, signatures_any)
+            signatures_tt = np.unique(np.append(signatures_tt, signatures_any))
             self._signatures = [item for index,item in enumerate(self._signatures) if item in signatures_tt]
             self._W = self._W[self._signatures]
-            
+        # removing MMRD and PPD signatures if is_MMRD and is_PPD is set to False
         if not is_MMRD or not is_PPD:
             MMRD_PPD_sigs = pd.read_csv(importlib.resources.open_text(data, 'MMRD_PPD_' + self._sig_type + '_Signatures.csv'), sep =',')
             signatures_MMRD = np.array(MMRD_PPD_sigs.loc[MMRD_PPD_sigs['MMRD_PPD_category'] == "MMRD"])
