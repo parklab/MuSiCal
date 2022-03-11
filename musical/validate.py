@@ -3,7 +3,6 @@ import pickle
 from .utils import beta_divergence, simulate_count_matrix, match_catalog_pair
 
 def validate(model, 
-             use_refit = False, 
              metric_dist = 'cosine' # for use_refit 'euclidean' might be better
         ): 
 
@@ -20,7 +19,6 @@ def validate(model,
     You can validate a table without running refitting by simply
     creating a model and setting W_s and H_s values to a table of your choosing
     """
-    save_models = False
 
     dist_W_all = {}
     dists_per_sig_all = {}
@@ -51,24 +49,14 @@ def validate(model,
                 X_simul_this[j] = simulate_count_matrix(W_s_this, H_s_this)
 
                 model_simul = model.clone_model(X_simul_this[j], grid_index = i)
-                if use_refit:
-                    model_simul.W = model.W_s_all[i]
-                    model_simul.run_reassign()
-                    H_simul_reordered, reordered_indices, pdist_this = match_catalog_pair(model.H_s_all[i].T, model_simul.H_s.T, metric = metric_dist)
-                    W_simul_this[j] = model_simul.W_s
-                    H_simul_this[j] = model_simul.H_s
-                else:
-                    model_simul.fit()
-                    W_simul_reordered, reordered_indices, pdist_this = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
-                    model_simul.W = W_simul_reordered
-                    model_simul.H = model_simul.H[reordered_indices,:]
+                model_simul.fit()
+                W_simul_reordered, reordered_indices, pdist_this = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
+                model_simul.W = W_simul_reordered
+                model_simul.H = model_simul.H[reordered_indices,:]
 
-                    W_simul_this[j] = model_simul.W
-                    H_simul_this[j] = model_simul.H
+                W_simul_this[j] = model_simul.W
+                H_simul_this[j] = model_simul.H
                     
-                if save_models: 
-                    list_models_simul[index] = model_simul
-  
                 index = index + 1
 
             W_simul_comb = np.array([np.array(W_simul_this[0]), np.array(W_simul_this[1]), np.array(W_simul_this[2])])
@@ -80,20 +68,13 @@ def validate(model,
             W_simul_all[i] = np.average(W_simul_comb, axis = 0)
             H_simul_all[i] = np.average(H_simul_comb, axis = 0)
 
-            if use_refit:
-                _, _, pdist_comb = match_catalog_pair(model.H, H_simul_all[i].T, metric = metric_dist)
-            else:
-                _, _, pdist_comb = match_catalog_pair(model.W, W_simul_all[i], metric = metric_dist)
+            _, _, pdist_comb = match_catalog_pair(model.W, W_simul_all[i], metric = metric_dist)
 
             dist_W_all[i] = pdist_comb
             dists_per_sig_all[i] = np.diagonal(pdist_comb)
 
-            if use_refit:
-                error_W_all.append(beta_divergence(model.W_s_all[i], W_simul_all[i], beta = 2))
-                error_H_all.append(beta_divergence(model.H_s_all[i], H_simul_all[i], beta = 2))
-            else:
-                error_W_all.append(beta_divergence(model.W, W_simul_all[i], beta = 2)) 
-                error_H_all.append(beta_divergence(model.H, H_simul_all[i], beta = 2))
+            error_W_all.append(beta_divergence(model.W, W_simul_all[i], beta = 2)) 
+            error_H_all.append(beta_divergence(model.H, H_simul_all[i], beta = 2))
                 
             inds_max = np.where(np.max(dists_per_sig_all[i]) == dists_per_sig_all[i])
             dist_max_all.append(np.max(dists_per_sig_all[i]))
@@ -108,7 +89,7 @@ def validate(model,
         best_grid_indices = np.where(dist_max_all < min_dist + 0.02)[0] # should we convert this into a parameter or keep it fixed
         best_grid_indices_sum = np.where(dist_sum_all < min_dist_sum + 0.02 * model.W.shape[1])[0] # should we convert this into a parameter or keep it fixed
         
-        indices_without_new_sigs = np.where(np.char.find('Sig_N0', model.signature_names_all[i]) == -1)[0]
+        indices_without_new_sigs = np.where(np.char.find('Sig_N', model.signature_names_all[i]) == -1)[0]
         if len(indices_without_new_sigs) > 0:        
             best_grid_indices = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
             best_grid_indices = best_indices_without_new_sigs
@@ -122,19 +103,13 @@ def validate(model,
         best_grid_indices_sum =  np.array(best_grid_indices_sum)[np.array(nsig)[np.array(best_grid_indices_sum)] == min_nsig_sum]
             
         # check the error of H
-        if use_refit:
-            best_grid_index = best_grid_indices[dist_max_all[best_grid_indices] == min_dist]
-        else:
-            min_error_H = np.min(np.array(error_H_all)[best_grid_indices])
-            best_grid_index = np.array(best_grid_indices)[np.array(error_H_all)[best_grid_indices] == min_error_H]
+        min_error_H = np.min(np.array(error_H_all)[best_grid_indices])
+        best_grid_index = np.array(best_grid_indices)[np.array(error_H_all)[best_grid_indices] == min_error_H]
 
         best_grid_index = np.asscalar(best_grid_index)
 
-        if use_refit:
-            best_grid_index_sum = best_grid_indices_sum[dist_sum_all[best_grid_indices_sum] == min_sum]
-        else:
-            min_error_H_sum = np.min(np.array(error_H_all)[best_grid_indices_sum])
-            best_grid_index_sum = np.array(best_grid_indices_sum)[np.array(error_H_all)[best_grid_indices_sum] == min_error_H_sum]
+        min_error_H_sum = np.min(np.array(error_H_all)[best_grid_indices_sum])
+        best_grid_index_sum = np.array(best_grid_indices_sum)[np.array(error_H_all)[best_grid_indices_sum] == min_error_H_sum]
         best_grid_index_sum = np.asscalar(best_grid_index_sum)
         
         W_simul = W_simul_all[best_grid_index]
@@ -160,24 +135,14 @@ def validate(model,
         for j in range(3): # for the moment repetitions are hardcoded
             X_simul_this[j] = simulate_count_matrix(W_s, H_s)
             model_simul = model.clone_model(X_simul_this[j], grid_index = 1) 
-            if use_refit:
-                model_simul.W = model.W_s
-                model_simul.run_reassign()
-                H_simul_reordered, reordered_indices, pdist[j] = match_catalog_pair(model.H_s.T, model_simul.H_s.T, metric = metric_dist)
-                W_simul_this[j] = model_simul.W_s
-                H_simul_this[j] = model_simul.H_s
-            else:
-                model_simul.fit()
-                W_simul_reordered, reordered_indices, pdist[j] = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
-                model_simul.W = W_simul_reordered
-                model_simul.H = model_simul.H[reordered_indices,:]
-                W_simul_this[j] = model_simul.W
-                H_simul_this[j] = model_simul.H
+            model_simul.fit()
+            W_simul_reordered, reordered_indices, pdist[j] = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
+            model_simul.W = W_simul_reordered
+            model_simul.H = model_simul.H[reordered_indices,:]
+            W_simul_this[j] = model_simul.W
+            H_simul_this[j] = model_simul.H
 
-            if use_refit:
-                _,_,pdist[j] = match_catalog_pair(model.H_s.T, model_simul.H_s.T, metric = metric_dist)
-            else: 
-                _,_,pdist[j] = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
+            _,_,pdist[j] = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
 
 
         pdist_comb = [pdist[0], pdist[1], pdist[2]]
@@ -197,12 +162,8 @@ def validate(model,
         dist_sum = np.max(dists_per_sig_comb)
         dist_max_sig_index = inds_max
         dist_W = pdist
-        if use_refit:
-            error_W = beta_divergence(model.W_s, W_simul, beta = 2)
-            error_H = beta_divergence(model.H_s, H_simul, beta = 2)
-        else:
-            error_W = beta_divergence(model.W, W_simul, beta = 2)
-            error_H = beta_divergence(model.H, H_simul, beta = 2)
+        error_W = beta_divergence(model.W, W_simul, beta = 2)
+        error_H = beta_divergence(model.H, H_simul, beta = 2)
         
-    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, error_W, error_H, dist_W, dist_max, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
+    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
 

@@ -2,8 +2,8 @@
 
 import numpy as np
 from .nnls import nnls
-from .nnls_sparse2 import SparseNNLS
-from .utils import match_signature_to_catalog_nnls_sparse2, beta_divergence, get_sig_indices_associated
+from .nnls_sparse import SparseNNLS
+from .utils import match_signature_to_catalog_nnls_sparse, beta_divergence, get_sig_indices_associated
 from .catalog import load_catalog
 
 def refit_matrix(X, W, method = 'likelihood_bidirectional',
@@ -98,7 +98,7 @@ def get_decomposed_W(W, W_catalog, signatures, thresh1, thresh2, thresh_new_sig)
     # for each signature in the signature matrix match to the catalog if the cosine similarity
     # is smaller than the value thresh_new_sig use the denovo signature instead
     for w in W.T:
-        match_inds, cos, coef = match_signature_to_catalog_nnls_sparse2(w = w, W_catalog = W_catalog, thresh1 = thresh1, thresh2 = thresh2, method = 'likelihood_bidirectional')
+        match_inds, cos, coef = match_signature_to_catalog_nnls_sparse(w = w, W_catalog = W_catalog, thresh1 = thresh1, thresh2 = thresh2, method = 'likelihood_bidirectional')
         if match_inds == ():
             inds_w_model_new_sig.append(ind_w_model)
         else:
@@ -127,19 +127,19 @@ def get_decomposed_W(W, W_catalog, signatures, thresh1, thresh2, thresh_new_sig)
 
     return W_s, signames
 
-def reassign(model, W_catalog, signatures, force_assign_associated = True):  # maybe we should move this function into denovo.py
+def reassign(model, W_catalog, signatures, force_assign_associated = False):  # maybe we should move this function into denovo.py
 
     # We need to write here an if to give error if parameters are not set
 
-    use_catalog = model.use_catalog #True,
-    thresh1_match = model.thresh1_match #0.99,
-    thresh2_match = model.thresh2_match #0.99,
-    method_sparse = model.method_sparse #'llh'
-    thresh1 = model.thresh1 #0.02,
-    thresh2 = model.thresh2 #0.02,
-    thresh1_match = model.thresh1_match #0.02,
-    thresh2_match = model.thresh2_match #0.02,
-    thresh_new_sig = model.thresh_new_sig #0.84,
+    use_catalog = model.use_catalog 
+    thresh1_match = model.thresh1_match 
+    thresh2_match = model.thresh2_match 
+    method_sparse = model.method_sparse 
+    thresh1 = model.thresh1
+    thresh2 = model.thresh2 
+    thresh1_match = model.thresh1_match 
+    thresh2_match = model.thresh2_match 
+    thresh_new_sig = model.thresh_new_sig 
 
     """
     Example for running without denovo calculation

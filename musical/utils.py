@@ -10,8 +10,7 @@ import scipy.stats as stats
 from operator import itemgetter
 from sklearn.preprocessing import normalize
 
-from .nnls_sparse import nnls_sparse
-from .nnls_sparse2 import SparseNNLS
+from .nnls_sparse import SparseNNLS
 
 ##################
 # Useful globals #
@@ -399,20 +398,8 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     return (), np.nan, None
 
 
-def match_signature_to_catalog_nnls_sparse(w, W_catalog, N=10000, method='llh_stepwise',
-                                           frac_thresh_base=0.02, frac_thresh_keep=0.4,
-                                           frac_thresh=0.05, llh_thresh=0.65, exp_thresh=8.):
-    x = np.rint(w*N).astype(int)
 
-    h = nnls_sparse(x, W_catalog, method=method,
-                    frac_thresh_base=frac_thresh_base, frac_thresh_keep=frac_thresh_keep,
-                    frac_thresh=frac_thresh, llh_thresh=llh_thresh, exp_thresh=exp_thresh)
-    match = np.arange(0, W_catalog.shape[1])[h > 0]
-    coef, _ = sp.optimize.nnls(W_catalog[:, match], w)
-    cos = 1 - sp.spatial.distance.cosine(w, W_catalog[:, match] @ coef)
-    return tuple(match), cos, coef
-
-def match_signature_to_catalog_nnls_sparse2(w, W_catalog, method='likelihood_bidirectional',
+def match_signature_to_catalog_nnls_sparse(w, W_catalog, method='likelihood_bidirectional',
                                             thresh1 = 0.001, thresh2 = None):
     
     sparse_method = SparseNNLS(method = method,
