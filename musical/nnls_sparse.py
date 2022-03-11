@@ -1,15 +1,107 @@
-"""Main class for the refitting problem"""
+"""Sparse nnls"""
 
 import numpy as np
 import pandas as pd
 import scipy as sp
-from .nnls import nnls
 from sklearn.metrics import pairwise_distances
 import scipy.stats as stats
+import warnings
+from sklearn.preprocessing import normalize
+import multiprocessing
+import os
 
 
-#def _llh_multinomial(x, p, epsilon=0.00001):
-def _llh_multinomial(x, p, epsilon=1e-16):
+def _fill_vector(x, indices, L):
+    if len(x) != len(indices):
+        raise ValueError('x and indices are not of the same length.')
+    x_filled = np.zeros(L)
+    x_filled[indices] = x
+    return x_filled
+
+
+def nnls_thresh_naive(x, W, thresh=0.05, thresh_agnostic=0.0, indices_associated_sigs=None):
+    """Naive thresholded nnls
+
+    An initial NNLS is first done. Based on the initial result,
+    signatures with normalized exposure < thresh or with absolute exposure
+    < thresh_agnostic/(max of signature) are removed. Then a final NNLS is done
+    to recalculate the exposure.
+    """
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ###
+    if thresh_agnostic > 0:
+        W_max = np.max(W, 0)
+        h, _ = sp.optimize.nnls(W, x)
+        h_normalized = h/np.sum(h)
+        indices_retained = indices_all[(h_normalized >= thresh) & (h >= thresh_agnostic/W_max)]
+    else:
+        h, _ = sp.optimize.nnls(W, x)
+        h_normalized = h/np.sum(h)
+        indices_retained = indices_all[h_normalized >= thresh]
+    ###
+    if len(indices_retained) == 0:
+        indices_retained = np.array([np.argmax(h)])
+
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
+def nnls_thresh(x, W, thresh=0.05, thresh_agnostic=0.0):
+    """Thresholded nnls
+
+    An initial NNLS is first done. Based on the initial result,
+    signatures with normalized exposure < thresh or with absolute exposure
+    < thresh_agnostic/(max of signature) are removed. Then this procedure is
+    repeated with only the retained signatures, until all signatures satisfy
+    the condition that normalized exposxure >= thresh and absolute exposure >=
+    thresh_agnostic/(max of signature).
+    """
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ###
+    if thresh_agnostic > 0:
+        W_max = np.max(W, 0)
+        h, _ = sp.optimize.nnls(W, x)
+        h_normalized = h/np.sum(h)
+        indices_retained = indices_all[(h_normalized >= thresh) & (h >= thresh_agnostic/W_max)]
+        if len(indices_retained) == 0:
+            indices_retained = np.array([np.argmax(h)])
+        while True:
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            h_normalized = h/np.sum(h)
+            indices_retained_next = indices_retained[(h_normalized >= thresh) & (h >= thresh_agnostic/W_max[indices_retained])]
+            if len(indices_retained_next) == 0:
+                indices_retained_next = np.array([indices_retained[np.argmax(h)]])
+            if np.array_equal(indices_retained_next, indices_retained):
+                break
+            indices_retained = indices_retained_next
+    else:
+        h, _ = sp.optimize.nnls(W, x)
+        h_normalized = h/np.sum(h)
+        indices_retained = indices_all[h_normalized >= thresh]
+        if len(indices_retained) == 0:
+            indices_retained = np.array([np.argmax(h)])
+        while True:
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            h_normalized = h/np.sum(h)
+            indices_retained_next = indices_retained[h_normalized >= thresh]
+            if len(indices_retained_next) == 0:
+                indices_retained_next = np.array([indices_retained[np.argmax(h)]])
+            if np.array_equal(indices_retained_next, indices_retained):
+                break
+            indices_retained = indices_retained_next
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
+def _multinomial_loglikelihood(x, p, epsilon=1e-16, per_trial=True):
     """Log likelihood of multinomial distribution: logP(x|p).
 
     Parameters
@@ -27,223 +119,669 @@ def _llh_multinomial(x, p, epsilon=1e-16):
         for cases where there are zeros in p.
     """
     p = p.astype(float)  # In case p is of type int
-    p[p == 0] = epsilon  # Consider p = p.clip(epsilon)
-    return np.sum(x*np.log(p))
-
-def _lh_multinomial(x, ps, offset=True, normalize=True):
-    """Multinomial likelihood for a fixed x using a set of p's.
-
-    Parameters
-    ----------
-    x : 1-d numpy array
-        Observations (counts)
-    ps : 2-d numpy array
-        A set of event probabilities. Each row of ps is p. Each p should be
-        summed to 1.
-    offset : boolean
-        If offset, subtract the log likelihoods by the maximum one.
-    normalize : boolean
-        If normalize, divide by sum of likelihoods.
-
-    Notes
-    ----------
-    1. The resulted likelihoods are good for calculating likelihood ratios of
-    multonimial models with different p's, since, 1) the constant factor
-    independent of p is ignored in _llh_multinomial, and 2) a constant is
-    subtracted from log likelihood.
-    """
-    llhs = np.array([_llh_multinomial(x, p) for p in ps])
-    #llhs = np.array([stats.multinomial.logpmf(x, int(np.sum(x)), p) for p in ps])
-    if offset:
-        lhs = np.exp(llhs - np.max(llhs))
+    p = p.clip(epsilon)
+    p = p/np.sum(p)
+    if per_trial:
+        return np.sum(x*np.log(p))/np.sum(x)
     else:
-        lhs = np.exp(llhs)
-    if normalize:
-        lhs = lhs/np.sum(lhs)
-    return lhs
+        return np.sum(x*np.log(p))
 
-def _redefine_frac_thresh(frac_thresh, h_fracs, frac_diff=0.05):
-    """Rescue cases where no signatures pass frac_thresh.
 
-    Parameters
+def nnls_likelihood_backward(x, W, thresh=0.001, per_trial=True, indices_associated_sigs=None):
+    """Likelihood NNLS with backward stepwise trimming
+
+    An initial NNLS is first done. Then we trim the exposure vector in a
+    backward stepwise manner. At each step, we calculate the multinomial
+    log likelihood ratio (logLR) between the full model with all currently
+    included signatures and the model where one signature is excluded,
+    and then remove the signature with the smallest logLR. We repeat this
+    process until all logLRs are above a certain threshold.
     ----------
-    frac_thresh : float
-    h_fracs : 1-d numpy array
-        Signature exposure fractions for a single sample.
-    frac_diff : float
-        Default 0.05
-
-    Notes
-    ----------
-    Six examples: frac_thresh = 0.2 originally.
-    Example 1: h_fracs = [0.41, 0.39, 0.1, 0.1]
-        Output will be 0.2
-    Example 2: h_fracs = [0.41, 0.29, 0.1, 0.1, 0.1]
-        Output will be 0.2
-    Example 3: h_fracs = [0.22, 0.18, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]                          i  _
-          Output will be 0.17
-    Example 4: h_fracs = [0.22, 0.12, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.06]
-        Output will be 0.2
-    Example 5: h_fracs = [0.19, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.06]
-        Output will be 0.14
-    Example 6: h_fracs = [0.19, 0.11, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-        Output will be 0.14
+    Notes:
+    1. Thresh is in the scale of log likelihood ratio between the full model
+    and the full model minus one signature. Greater thresh means more sparsity.
+    Thresh should be nonnegative.
     """
-    frac_max = np.max(h_fracs)
-    if frac_max > frac_thresh:
-        frac_max_index = np.argmax(h_fracs)
-        frac_second_max = np.max(np.delete(h_fracs, frac_max_index))
-        if frac_max - frac_second_max < frac_diff:
-            frac_thresh = min(frac_thresh, frac_max - frac_diff)
-    else:
-        frac_thresh = frac_max - frac_diff
-
-    return frac_thresh
-
-
-def _nnls_sparse_delta(x, h, W, delta=0.):
-    """Auxiliary function to perform sparse NNLS with a simple cutoff.
-
-    Parameters
-    ----------
-    x : 1-d numpy array, shape (n_features,)
-        Count vector of a single sample
-    w : 1-d numpy array, shape (n_components,)
-        Initial exposure vector of a single sample
-    H : 2-d numpy array, shape (n_components, n_features)
-        Signature matrix
-    delta : float
-        Threshold. Signatures with exposure fraction <= delta in the original
-        w will be set to 0 exposure.
-    """
-    n = np.sum(x)
-    n_components = W.shape[1]
-    h_fracs = h/n
-    inds_sig = np.where(h_fracs > delta)[0]
-    if len(inds_sig) == 0:
-        inds_sig = np.array([np.argmax(h_fracs)])
-    inds_zero = np.array([i for i in np.arange(0, n_components) if i not in inds_sig])
-    if len(inds_zero) > 0:
-        h[inds_zero] = 0.
-    h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
-    h_fracs = h/n
-    return h, h_fracs, inds_zero, inds_sig
-
-def nnls_sparse(x, W, method='llh',
-                frac_thresh_base=0.02, frac_thresh_keep=0.4,
-                frac_thresh=0.05, llh_thresh=0.65, exp_thresh=8.):
-
-    n_components = W.shape[1]
-    n = np.sum(x)
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ### Initial NNLS
     h, _ = sp.optimize.nnls(W, x)
-    if method in ['llh', 'cut', 'llh_stepwise']:
-        h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(x, h, W, delta = frac_thresh_base)
-
-    inds_all = np.arange(0, n_components)
-
-
-    if method == 'llh':
-        x_nnls = np.matmul(W, h)
-        if len(inds_sig) > 1:
-            lhs_nonzero = []
-            for ind in inds_sig:
-                x_nnls2 = np.matmul(W[:, inds_sig[inds_sig != ind]],
-                                    sp.optimize.nnls(W[:, inds_sig[inds_sig != ind]], x)[0])
-                ps = np.array([x_nnls/np.sum(x_nnls),
-                               x_nnls2/np.sum(x_nnls2)])
-                lhs = _lh_multinomial(x, ps)
-                lhs_nonzero.append(lhs[0])
-
-            lhs_nonzero = np.array(lhs_nonzero)
-            # Select final set of nonzero signatures
-            inds_sig_tmp = []
-            for ind, lh, frac in zip(inds_sig, lhs_nonzero,
-                                     h_fracs[inds_sig]):
-                if lh > llh_thresh or frac > frac_thresh_keep:
-                    inds_sig_tmp.append(ind)
-            # In case nothing passes the criteria above.
-            if len(inds_sig_tmp) == 0:
-                inds_sig_tmp.append(inds_sig[np.argmax(lhs_nonzero)])
-            inds_sig = np.sort(np.array(inds_sig_tmp))
-            inds_zero = np.array([i for i in inds_all
-                                  if i not in inds_sig])
-
-        # Final NNLS
-        if len(inds_zero) > 0:
-            h[inds_zero] = 0.
-        h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
-        h_fracs = h/n
-
-    elif method == 'cut':
-        sig_maxs = np.max(W, axis = 0)
-        frac_thresh = _redefine_frac_thresh(frac_thresh, h_fracs)
-        h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(
-            x, h, W, frac_thresh)
-        # Loop until all the cuts are satisfied by all signatures
-        while (
-            np.sum(
-                np.logical_or(
-                    h_fracs[inds_sig] <= frac_thresh,
-                    h[inds_sig] <= exp_thresh/sig_maxs[inds_sig]
-                    )
-            ) > 0
-        ):
-            frac_thresh = _redefine_frac_thresh(frac_thresh, h_fracs)
-            inds_sig = inds_sig[
-                np.logical_and(
-                    h_fracs[inds_sig] > frac_thresh,
-                    h[inds_sig] > exp_thresh/sig_maxs[inds_sig]
-                )
-            ]
-            inds_zero = np.array([i for i in inds_all
-                                  if i not in inds_sig])
-            if len(inds_zero) > 0:
-                h[inds_zero] = 0.
-            h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
-            h_fracs = h/n
-
-    elif method == 'llh_stepwise':
-        x_nnls = W @ h
-        inds_current = np.copy(inds_sig)
-        if len(inds_sig) > 1:
-            while len(inds_current) > 1:
-                likelihood_ratios = []
-                xs = []
-                for ind in inds_current:
-                    inds_other = np.array([i for i in np.arange(0, n_components) if i != ind])
-                    x_nnls2 = W[:, inds_other] @ sp.optimize.nnls(W[:, inds_other], x)[0]
-                    # to make the selection among signatures with non-zero exposure exchange above two lines with the line below
-                    # x_nnls2 = W[:, inds_current[inds_current != ind]] @ sp.optimize.nnls(W[:, inds_current[inds_current != ind]], x)[0]
-                    xs.append(x_nnls2)
-                    ps = np.array([x_nnls/np.sum(x_nnls), x_nnls2/np.sum(x_nnls2)])
-                    lhs = _lh_multinomial(x, ps)
-                    likelihood_ratios.append(lhs[0])
-
-                if np.min(likelihood_ratios) > llh_thresh:
-                    break
-                else:
-                    index_remove = inds_current[np.argmin(likelihood_ratios)]
-                    inds_current = np.copy(inds_current[inds_current != index_remove])
-                    x_nnls = xs[np.argmin(likelihood_ratios)]
-
-            inds_sig = np.copy(inds_current)
-            inds_zero = np.array([i for i in inds_all if i not in inds_sig])
-        if len(inds_zero) > 0:
-            h[inds_zero] = 0.
-        # if frac_thresh and exp_thresh are set to 0 then the changes below have no effect
-        if (frac_thresh == 0 and exp_thresh == 0) or inds_sig.size == 1:
-            h[inds_sig] = sp.optimize.nnls(W[:, inds_sig], x)[0]
+    indices_retained = indices_all[h > 0]
+    ### Backward trimming loop
+    while True:
+        if len(indices_retained) == 1:
+            break
         else:
-            h[inds_sig] = nnls_sparse(x = x, W= W[:, inds_sig], method = 'cut',
-                                      frac_thresh_base = frac_thresh_base,
-                                      frac_thresh_keep = frac_thresh_keep,
-                                      frac_thresh = frac_thresh,
-                                      llh_thresh = llh_thresh,
-                                      exp_thresh = exp_thresh)
-        h_fracs = h/n
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that removes 1 signature
+            for index in indices_retained:
+                _indices = np.array([i for i in indices_retained if i != index])
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihood_current - loglikelihoods
+            # Test
+            if np.min(loglikelihoods) >= thresh:
+                break
+            else:
+                index_remove = indices_retained[np.argmin(loglikelihoods)]
+                indices_retained = np.array([i for i in indices_retained if i != index_remove])
 
+    ### Final NNLS
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
 
-    elif method == 'cut_naive':
-        h, h_fracs, inds_zero, inds_sig = _nnls_sparse_delta(x, h, W, delta = frac_thresh)
-
+    ### Final NNLS
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
     return h
+
+
+def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True, indices_associated_sigs=None):
+    """Likelihood NNLS with both backward and forward stepwise rountines.
+
+    Notes:
+    1. thresh_forward should be greater than thresh_backward. Otherwise the
+    loop may run into a dead loop where the same signature is being removed
+    and added back within one iteration, although this is caught gracefully in
+    the code.
+    2. Both thresh_backward and thresh_forward should be nonnegative.
+    """
+    if thresh_forward is None:
+        thresh_forward = thresh_backward
+    if thresh_backward > thresh_forward:
+        warnings.warn('thresh_backward is greater thresh_forward. This might lead to indefinite loops.', UserWarning)
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ### Initial NNLS
+    h, _ = sp.optimize.nnls(W, x)
+    indices_retained = indices_all[h > 0]
+    indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+    ### Didirectional loop
+    i_iter = 0
+    while i_iter < max_iter:
+        i_iter += 1
+        ########################## Backward ##########################
+        if len(indices_retained) == 1:
+            backward_stop = True
+        else:
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that removes 1 signature
+            for index in indices_retained:
+                _indices = np.array([i for i in indices_retained if i != index])
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihood_current - loglikelihoods
+            # Test
+            if np.min(loglikelihoods) >= thresh_backward:
+                backward_stop = True
+                #print(i_iter, 'Remove', backward_stop, None, indices_retained)
+                #print(np.min(loglikelihoods))
+            else:
+                backward_stop = False
+                index_remove = indices_retained[np.argmin(loglikelihoods)]
+                indices_retained = np.array([i for i in indices_retained if i != index_remove])
+                #print(i_iter, 'Remove', backward_stop, index_remove, indices_retained)
+                #print(np.min(loglikelihoods))
+        ########################## Forward ##########################
+        indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+        if len(indices_others) == 0:
+            forward_stop = True
+        else:
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that adds 1 signature
+            for index in indices_others:
+                _indices = np.sort(np.append(indices_retained, index))
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihoods - loglikelihood_current
+            # Test
+            if np.max(loglikelihoods) <= thresh_forward:
+                forward_stop = True
+                #print(i_iter, 'Add', forward_stop, None, indices_retained)
+                #print(np.max(loglikelihoods))
+            else:
+                forward_stop = False
+                index_add = indices_others[np.argmax(loglikelihoods)]
+                indices_retained = np.sort(np.append(indices_retained, index_add))
+                #print(i_iter, 'Add', forward_stop, index_add, indices_retained)
+                #print(np.max(loglikelihoods))
+        ######################## Stopping criterion ########################
+        if backward_stop and forward_stop:
+            break
+        if not backward_stop and not forward_stop and index_remove == index_add:
+            warnings.warn('The same signature is being removed and added back within one iteration, suggesting ill convergence.',
+                          UserWarning)
+            break
+    if i_iter >= max_iter:
+        warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
+                      UserWarning)
+    ### Final NNLS                                                               
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
+def nnls_cosine_bidirectional(x, W, thresh_backward=0.01, thresh_forward=None, max_iter=1000):
+    if thresh_forward is None:
+        thresh_forward = thresh_backward
+    if thresh_backward > thresh_forward:
+        warnings.warn('thresh_backward is greater thresh_forward. This might lead to indefinite loops.', UserWarning)
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ### Initial NNLS
+    h, _ = sp.optimize.nnls(W, x)
+    indices_retained = indices_all[h > 0]
+    indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+    ### Didirectional loop
+    i_iter = 0
+    while i_iter < max_iter:
+        i_iter += 1
+        ########################## Backward ##########################
+        if len(indices_retained) == 1:
+            backward_stop = True
+        else:
+            # cosine similarity of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            cosine_current = 1 - sp.spatial.distance.cosine(x, p_current)
+            cosines = []
+            # cosine similarity of model that removes 1 signature
+            for index in indices_retained:
+                _indices = np.array([i for i in indices_retained if i != index])
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                cosines.append(1 - sp.spatial.distance.cosine(x, p))
+            cosines = np.array(cosines)
+            # cosine differences
+            cosines = cosine_current - cosines
+            # Test
+            if np.min(cosines) >= thresh_backward:
+                backward_stop = True
+            else:
+                backward_stop = False
+                index_remove = indices_retained[np.argmin(cosines)]
+                indices_retained = np.array([i for i in indices_retained if i != index_remove])
+        ########################## Forward ##########################
+        indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+        if len(indices_others) == 0:
+            forward_stop = True
+        else:
+            # cosine similarity of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            cosine_current = 1 - sp.spatial.distance.cosine(x, p_current)
+            cosines = []
+            # cosine similarity of model that adds 1 signature
+            for index in indices_others:
+                _indices = np.sort(np.append(indices_retained, index))
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                cosines.append(1 - sp.spatial.distance.cosine(x, p))
+            cosines = np.array(cosines)
+            # cosine differences
+            cosines = cosines - cosine_current
+            # Test
+            if np.max(cosines) <= thresh_forward:
+                forward_stop = True
+            else:
+                forward_stop = False
+                index_add = indices_others[np.argmax(cosines)]
+                indices_retained = np.sort(np.append(indices_retained, index_add))
+        ######################## Stopping criterion ########################
+        if backward_stop and forward_stop:
+            break
+        if not backward_stop and not forward_stop and index_remove == index_add:
+            warnings.warn('The same signature is being removed and added back within one iteration, suggesting ill convergence.',
+                          UserWarning)
+            break
+    if i_iter >= max_iter:
+        warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
+                      UserWarning)
+    ### Final NNLS
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
+def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True, indices_associated_sigs=None):
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ### Initial NNLS
+    h, _ = sp.optimize.nnls(W, x)
+    indices_retained = indices_all[h > 0]
+    ### Backward trimming loop
+    while True:
+        if len(indices_retained) == 1:
+            break
+        else:
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that removes 1 signature
+            for index in indices_retained:
+                _indices = np.array([i for i in indices_all if i != index]) # !!!!!! Difference in here.
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihood_current - loglikelihoods
+            # Test
+            if np.min(loglikelihoods) >= thresh:
+                break
+            else:
+                index_remove = indices_retained[np.argmin(loglikelihoods)]
+                indices_retained = np.array([i for i in indices_retained if i != index_remove])
+    ### Final NNLS                                                                                          
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
+def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_forward=None, max_iter=1000, per_trial=True, indices_associated_sigs=None):
+    if thresh_forward is None:
+        thresh_forward = thresh_backward
+    if thresh_backward > thresh_forward:
+        warnings.warn('thresh_backward is greater than thresh_forward. This might lead to indefinite loops.', UserWarning)
+    n_sigs = W.shape[1]
+    indices_all = np.arange(0, n_sigs)
+    ### Initial NNLS
+    h, _ = sp.optimize.nnls(W, x)
+    indices_retained = indices_all[h > 0]
+    indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+    ### Didirectional loop
+    i_iter = 0
+    while i_iter < max_iter:
+        i_iter += 1
+        ########################## Backward ##########################
+        if len(indices_retained) == 1:
+            backward_stop = True
+        else:
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that removes 1 signature
+            for index in indices_retained:
+                _indices = np.array([i for i in indices_all if i != index]) # !!!!!! Difference in here.
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihood_current - loglikelihoods
+            # Test
+            if np.min(loglikelihoods) >= thresh_backward:
+                backward_stop = True
+                #print(i_iter, 'Remove', backward_stop, None, indices_retained)
+            else:
+                backward_stop = False
+                index_remove = indices_retained[np.argmin(loglikelihoods)]
+                indices_retained = np.array([i for i in indices_retained if i != index_remove])
+                #print(i_iter, 'Remove', backward_stop, index_remove, indices_retained)
+        ########################## Forward ##########################
+        indices_others = np.array(sorted(list(set(indices_all) - set(indices_retained))))
+        if len(indices_others) == 0:
+            forward_stop = True
+        else:
+            # Log likelihood of current full model
+            h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+            p_current = W[:, indices_retained] @ h
+            p_current = p_current/np.sum(p_current)
+            loglikelihood_current = _multinomial_loglikelihood(x, p_current, per_trial=per_trial)
+            loglikelihoods = []
+            # Log likelihoods of model that adds 1 signature
+            for index in indices_others:
+                _indices = np.sort(np.append(indices_retained, index))
+                p = W[:, _indices] @ sp.optimize.nnls(W[:, _indices], x)[0]
+                p = p/np.sum(p)
+                loglikelihoods.append(_multinomial_loglikelihood(x, p, per_trial=per_trial))
+            loglikelihoods = np.array(loglikelihoods)
+            # Log likelihood ratios
+            loglikelihoods = loglikelihoods - loglikelihood_current
+            # Test
+            if np.max(loglikelihoods) <= thresh_forward:
+                forward_stop = True
+                #print(i_iter, 'Add', forward_stop, None, indices_retained)
+            else:
+                forward_stop = False
+                index_add = indices_others[np.argmax(loglikelihoods)]
+                indices_retained = np.sort(np.append(indices_retained, index_add))
+                #print(i_iter, 'Add', forward_stop, index_add, indices_retained)
+        ######################## Stopping criterion ########################
+        if backward_stop and forward_stop:
+            break
+        if not backward_stop and not forward_stop and index_remove == index_add:
+            warnings.warn('The same signature is being removed and added back within one iteration, suggesting ill convergence.',
+                          UserWarning)
+            break
+    if i_iter >= max_iter:
+        warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
+                      UserWarning)
+    ### Final NNLS                                                                            
+    if indices_associated_sigs != None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
+    h = _fill_vector(h, indices_retained, n_sigs)
+    return h
+
+
+class SparseNNLS:
+    def __init__(self,
+                 method='likelihood_bidirectional',
+                 thresh1=None,
+                 thresh2=None,
+                 max_iter=None,
+                 per_trial=None,
+                 N=None,
+                 indices_associated_sigs=None
+                 ):
+        self.method = method
+        self.thresh1 = thresh1
+        self.thresh2 = thresh2
+        self.max_iter = max_iter
+        self.per_trial = per_trial
+        self.N = N
+        self.indices_associated_sigs = indices_associated_sigs
+        
+    def fit(self, X, W):
+        # Save original input data
+        self.X_original = X
+        self.W_original = W
+        ##########
+        # Convert input to appropriate data types.
+        if isinstance(W, pd.DataFrame):
+            self.W = W
+            self.sigs_all = self.W.columns.values
+        else:
+            self.W = pd.DataFrame(W, columns=['Sig' + str(i) for i in range(0, W.shape[1])])
+            self.sigs_all = self.W.columns.values
+        if isinstance(X, pd.DataFrame):
+            self.X = X
+            self.samples = self.X.columns.values
+        else:
+            if len(X.shape) == 1:
+                self.X = pd.DataFrame(np.reshape(X, (-1, 1)), columns=['Sample' + str(i) for i in range(0, 1)], index=self.W.index)
+            else:
+                self.X = pd.DataFrame(X, columns=['Sample' + str(i) for i in range(0, X.shape[1])], index=self.W.index)
+            self.samples = self.X.columns.values
+        ##########
+        # If a rescale factor is used, rescale data.
+        if self.N is not None:
+            if type(self.N) is not int:
+                raise ValueError('N must be an integer.')
+            self._X_in = self.X * self.N
+            self._X_in = self._X_in.round(0).astype(int)
+        else:
+            self._X_in = self.X
+        ##########
+        # NNLS
+        if self.method == 'thresh_naive':
+            if self.thresh1 is None:
+                self.thresh1 = 0.05
+            self.thresh = self.thresh1
+            if self.thresh2 is None:
+                self.thresh2 = 0.0
+            self.thresh_agnostic = self.thresh2
+            self.H = [
+                nnls_thresh_naive(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
+            ]
+        elif self.method == 'thresh':
+            if self.thresh1 is None:
+                self.thresh1 = 0.05
+            self.thresh = self.thresh1
+            if self.thresh2 is None:
+                self.thresh2 = 0.0
+            self.thresh_agnostic = self.thresh2
+            self.H = [
+                nnls_thresh(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic) for x in self._X_in.T.values
+            ]
+        elif self.method == 'likelihood_backward':
+            if self.thresh1 is None:
+                self.thresh1 = 0.001
+            self.thresh = self.thresh1
+            if self.per_trial is None:
+                self.per_trial = True
+            if self.thresh2 is not None:
+                warnings.warn('Method is chosen as likelihood_backward. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
+                self.thresh2 = None
+            self.H = [
+                nnls_likelihood_backward(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
+            ]
+        elif self.method == 'likelihood_backward_relaxed':
+            if self.thresh1 is None:
+                self.thresh1 = 0.001
+            self.thresh = self.thresh1
+            if self.per_trial is None:
+                self.per_trial = True
+            if self.thresh2 is not None:
+                warnings.warn('Method is chosen as likelihood_backward_relaxed. The supplied thresh2 will not be used and thus is set to None.', UserWarning)
+                self.thresh2 = None
+            self.H = [
+                nnls_likelihood_backward_relaxed(x, self.W.values, thresh=self.thresh, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
+            ]
+        elif self.method == 'likelihood_bidirectional':
+            if self.thresh1 is None:
+                self.thresh1 = 0.001
+            self.thresh_backward = self.thresh1
+            if self.thresh2 is None:
+                self.thresh2 = None
+            self.thresh_forward = self.thresh2
+            if self.max_iter is None:
+                self.max_iter = 1000
+            if self.per_trial is None:
+                self.per_trial = True
+            self.H = [
+                nnls_likelihood_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
+            ]
+        elif self.method == 'likelihood_bidirectional_relaxed':
+            if self.thresh1 is None:
+                self.thresh1 = 0.001
+            self.thresh_backward = self.thresh1
+            if self.thresh2 is None:
+                self.thresh2 = None
+            self.thresh_forward = self.thresh2
+            if self.max_iter is None:
+                self.max_iter = 1000
+            if self.per_trial is None:
+                self.per_trial = True
+            self.H = [
+                nnls_likelihood_bidirectional_relaxed(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, per_trial=self.per_trial, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
+            ]
+        elif self.method == 'cosine_bidirectional':
+            if self.thresh1 is None:
+                self.thresh1 = 0.01
+            self.thresh_backward = self.thresh1
+            if self.thresh2 is None:
+                self.thresh2 = None
+            self.thresh_forward = self.thresh2
+            if self.max_iter is None:
+                self.max_iter = 1000
+            self.H = [
+                nnls_cosine_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter) for x in self._X_in.T.values
+            ]
+        else:
+            raise ValueError('Invalid method for SparseNNLS.')
+        ##########
+        # If a rescale factor is used, convert back to the original scale.
+        # A final NNLS is needed constraining to only active signatures.
+        if self.N is not None:
+            tmp = []
+            n_sigs = len(self.sigs_all)
+            indices_all = np.arange(0, n_sigs)
+            for x, h in zip(self.X.T.values, self.H):
+                indices_retained = indices_all[h > 0]
+                h_new, _ = sp.optimize.nnls(self.W.iloc[:, indices_retained], x)
+                h_new = _fill_vector(h_new, indices_retained, n_sigs)
+                tmp.append(h_new)
+            self.H = tmp
+        ##########
+        # Collect final data
+        self.H = pd.DataFrame(np.array(self.H).T, index=self.W.columns, columns=self.X.columns)
+        self.X_reconstructed = pd.DataFrame(np.array([self.W.values @ h for h in self.H.T.values]).T,
+                                            columns=self.X.columns, index=self.X.index)
+        self.cos_similarities = []
+        self.matched_sigs = []
+        self.coefficients = []
+        for x, h, x_reconstructed in zip(self.X.T.values, self.H.T.values, self.X_reconstructed.T.values):
+            self.matched_sigs.append(self.sigs_all[h > 0])
+            self.coefficients.append(h[h > 0])
+            self.cos_similarities.append(1 - sp.spatial.distance.cosine(x, x_reconstructed))
+
+        self.sigs_reduced = self.H.index[self.H.sum(1) > 0].values
+        self.W_reduced = pd.DataFrame.copy(self.W[self.sigs_reduced])
+        self.H_reduced = pd.DataFrame.copy(self.H.loc[self.sigs_reduced])
+        self.H_reduced_normalized = pd.DataFrame(normalize(self.H_reduced.values, norm='l1', axis=0), index=self.H_reduced.index, columns=self.H_reduced.columns)
+
+        return self
+
+
+class SparseNNLSGrid:
+    def __init__(self,
+                 method='likelihood_bidirectional',
+                 thresh1_grid=None,
+                 thresh2_grid=None,
+                 max_iter=None,
+                 per_trial=None,
+                 N=None,
+                 ncpu=1,
+                 verbose=0,
+                 indices_associated_sigs=None
+                ):
+        self.method = method
+        self.thresh1_grid = thresh1_grid
+        self.thresh2_grid = thresh2_grid
+        self.max_iter = max_iter
+        self.per_trial = per_trial
+        self.N = N
+        self.ncpu = ncpu
+        self.verbose = verbose
+        self.indices_associated_sigs = indices_associated_sigs
+
+
+    def _job(self, parameters):
+        thresh1, thresh2 = parameters
+        np.random.seed() # In case any randomization is used.
+        model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
+                           max_iter=self.max_iter, per_trial=self.per_trial, N=self.N,
+                           indices_associated_sigs=self.indices_associated_sigs)
+        model.fit(self.X, self.W)
+        if self.verbose:
+            print('Job for thresh1 = ' + str(thresh1) + ' and thresh2 = ' + str(thresh2) + ' finished.')
+        return parameters, model
+
+    def fit(self, X, W):
+        self.X = X
+        self.W = W
+        if self.ncpu is None:
+            self.ncpu = os.cpu_count()
+        ##########
+        # Default grid values
+        if self.method == 'thresh_naive':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.arange(0.0, 0.201, 0.002)
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([0.0])
+        elif self.method == 'thresh':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.arange(0.0, 0.201, 0.002)
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([0.0])
+        elif self.method == 'likelihood_backward':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([None])
+        elif self.method == 'likelihood_backward_relaxed':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([None])
+        elif self.method == 'likelihood_bidirectional':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([None])
+        elif self.method == 'likelihood_bidirectional_relaxed':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([None])
+        else:
+            raise ValueError('Invalid method for SparseNNLSGrid.')
+        ##########
+        # Calculations
+        if self.ncpu == 1:
+            #self.models_grid = {}
+            self.H_reduced_grid = {}
+            self.W_reduced_grid = {}
+            for thresh1 in self.thresh1_grid:
+                for thresh2 in self.thresh2_grid:
+                    model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
+                                       max_iter=self.max_iter, per_trial=self.per_trial, N=self.N,
+                                       indices_associated_sigs=self.indices_associated_sigs)
+                    model.fit(self.X, self.W)
+                    #self.models_grid[(thresh1, thresh2)] = model
+                    self.H_reduced_grid[(thresh1, thresh2)] = model.H_reduced
+                    self.W_reduced_grid[(thresh1, thresh2)] = model.W_reduced
+        else:
+            parameters = []
+            for thresh1 in self.thresh1_grid:
+                for thresh2 in self.thresh2_grid:
+                    parameters.append((thresh1, thresh2))
+            workers = multiprocessing.Pool(self.ncpu)
+            results = workers.map(self._job, parameters)
+            workers.close()
+            workers.join()
+            #self.models_grid = {}
+            self.H_reduced_grid = {}
+            self.W_reduced_grid = {}
+            for item in results:
+                #self.models_grid[item[0]] = item[1]
+                self.H_reduced_grid[item[0]] = item[1].H_reduced
+                self.W_reduced_grid[item[0]] = item[1].W_reduced
+
+
+        return self

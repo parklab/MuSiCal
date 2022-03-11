@@ -1126,12 +1126,17 @@ class DenovoSig:
         return self
 
     def validate_assignment(self, use_refit = False, clear_grid = False):
-        W_simul, H_simul, X_simul, best_grid_index, best_grid_indices, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_max_sig_index_all, _, _, _, _, _, _ = validate(self,  use_refit = use_refit)
+        W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_max_sig_index, dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, _, _, _, _ = validate(self,  use_refit = use_refit)
+
         self.W_simul = W_simul
         self.H_simul = H_simul
         self.X_simul = X_simul
+        self.W_simul_all = W_simul_all
+        self.H_simul_all = H_simul_all
         self.best_grid_index = best_grid_index
+        self.best_grid_index_sum = best_grid_index_sum
         self.best_grid_indices = best_grid_indices
+        self.best_grid_indices_sum = best_grid_indices_sum
         self.error_W_simul = error_W
         self.error_H_simul = error_H
         self.dist_W_simul = dist_W
@@ -1141,15 +1146,15 @@ class DenovoSig:
         self.dist_max_simul_sig_index_all = dist_max_sig_index_all
 
         if self.n_grid > 1:
-            self.W_s = self.W_s_all[best_grid_index]
-            self.H_s = self.H_s_all[best_grid_index]
-            self.signature_names = self.signature_names_all[best_grid_index]
-            self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index]
-            self.set_params(thresh1 = [self.thresh1_all[best_grid_index]],
-                            thresh2 = [self.thresh2_all[best_grid_index]],
-                            thresh1_match = [self.thresh1_match_all[best_grid_index]],
-                            thresh2_match = [self.thresh2_match_all[best_grid_index]],
-                            thresh_new_sig = [self.thresh_new_sig_all[best_grid_index]])
+            self.W_s = self.W_s_all[best_grid_index_sum]
+            self.H_s = self.H_s_all[best_grid_index_sum]
+            self.signature_names = self.signature_names_all[best_grid_index_sum]
+            self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index_sum]
+            self.set_params(thresh1 = [self.thresh1_all[best_grid_index_sum]],
+                            thresh2 = [self.thresh2_all[best_grid_index_sum]],
+                            thresh1_match = [self.thresh1_match_all[best_grid_index_sum]],
+                            thresh2_match = [self.thresh2_match_all[best_grid_index_sum]],
+                            thresh_new_sig = [self.thresh_new_sig_all[best_grid_index_sum]])
 
         if clear_grid:
             self.clear_grid()
