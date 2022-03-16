@@ -92,7 +92,7 @@ class Catalog:
         elif 'Indel' in self._name:
             self._sig_type = 'Indel'
 
-    def restrict_catalog(self, tumor_type = None, is_MMRD = False, is_PPD = False):
+    def restrict_catalog(self, tumor_type = None, is_MMRD = True, is_PPD = True):
         if tumor_type != None:
             if self._sig_type == '':
                 raise ValueError('Supported for SBS and Indel catalogs')
