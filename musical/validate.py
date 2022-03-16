@@ -33,6 +33,11 @@ def validate(model,
     dist_max_sig_index_all = []
     nsig = []
     nsig = np.array(nsig)
+    
+    # fix lambda 
+    model.mvnmf_hyperparameter_method = 'fixed'
+    model.mvnmf_lambda_tilde_grid = np.float(model.lambda_tilde_all[model.n_components][0])
+
     if model.n_grid > 1:
         index = 0
         for i in range(model.n_grid): 
@@ -165,5 +170,5 @@ def validate(model,
         error_W = beta_divergence(model.W, W_simul, beta = 2)
         error_H = beta_divergence(model.H, H_simul, beta = 2)
         
-    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
+    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_sum, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
 
