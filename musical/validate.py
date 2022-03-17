@@ -131,6 +131,7 @@ def validate(model,
         best_grid_index = None
         best_grid_index_sum = None
         best_grid_indices = None
+        best_grid_indices_sum = None
         W_s = model.W_s
         H_s = model.H_s
         pdist = {}
