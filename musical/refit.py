@@ -229,7 +229,8 @@ def reassign(model, W_catalog, signatures, force_assign_associated = False):  # 
                         if not (signames_this == signames_this_tmp).all():
                             signames_this = signames_this_tmp
                             W_s_this = W_catalog[:,[index for index,item in enumerate(signatures) if item in signames_this]]
-
+                else:
+                    indices_associated_sigs = None
                 H_s_this, reco_error = refit_matrix(X, W_s_this,
                                                     method = method_sparse,
                                                     thresh1 = thresh1[i],
