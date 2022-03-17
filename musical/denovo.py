@@ -1075,7 +1075,7 @@ class DenovoSig:
             self.thresh_new_sig_all = None
         return self
 
-    def run_reassign(self, W_catalog, signatures, clear = True, use_refit = False):
+    def run_reassign(self, W_catalog, signatures, clear = True):
         W_s, H_s, signames, reconstruction_error_s_all, n_grid, thresh1_all, thresh2_all, thresh1_match_all, thresh2_match_all, thresh_new_sig_all = reassign(self, W_catalog = W_catalog, signatures = signatures)
 
 
@@ -1126,7 +1126,7 @@ class DenovoSig:
         return self
 
     def validate_assignment(self, use_refit = False, clear_grid = False):
-        W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_sum, dist_max_sig_index, dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, _, _, _, _ = validate(self,  use_refit = use_refit)
+        W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_sum, dist_max_sig_index, dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, _, _, _, _ = validate(self)
 
         self.W_simul = W_simul
         self.H_simul = H_simul
