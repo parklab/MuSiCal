@@ -150,10 +150,6 @@ def validate(model,
 
             _,_,pdist[j] = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
 
-
-        pdist_comb = [pdist[0], pdist[1], pdist[2]]
-        dist_W = np.diagonal(pdist_comb)        
-        dists_per_sig_comb = np.diagonal(np.average(pdist_comb, axis = 2))
         
         W_simul_comb = [W_simul_this[0], W_simul_this[1], W_simul_this[2]]
         H_simul_comb = [H_simul_this[0], H_simul_this[1], H_simul_this[2]]
@@ -162,6 +158,9 @@ def validate(model,
         X_simul = np.average(X_simul_comb, axis = 0)
         W_simul = np.average(W_simul_comb, axis = 0)
         H_simul = np.average(H_simul_comb, axis = 0)
+
+        _, _, pdist_comb = match_catalog_pair(model.W, W_simul, metric = metric_dist)
+        dists_per_sig_comb = np.diagonal(pdist_comb)
                 
         inds_max = np.where(np.max(dists_per_sig_comb) == dists_per_sig_comb)
         dist_max = np.max(dists_per_sig_comb)
