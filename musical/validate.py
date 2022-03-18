@@ -148,9 +148,7 @@ def validate(model,
             W_simul_this[j] = model_simul.W
             H_simul_this[j] = model_simul.H
 
-            _,_,pdist[j] = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
-
-        
+       
         W_simul_comb = [W_simul_this[0], W_simul_this[1], W_simul_this[2]]
         H_simul_comb = [H_simul_this[0], H_simul_this[1], H_simul_this[2]]
         X_simul_comb = [X_simul_this[0], X_simul_this[1], X_simul_this[2]]
@@ -166,7 +164,7 @@ def validate(model,
         dist_max = np.max(dists_per_sig_comb)
         dist_sum = np.max(dists_per_sig_comb)
         dist_max_sig_index = inds_max
-        dist_W = pdist
+        dist_W = pdist_comb
         error_W = beta_divergence(model.W, W_simul, beta = 2)
         error_H = beta_divergence(model.H, H_simul, beta = 2)
         
