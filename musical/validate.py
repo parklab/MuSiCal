@@ -162,7 +162,7 @@ def validate(model,
                 
         inds_max = np.where(np.max(dists_per_sig_comb) == dists_per_sig_comb)
         dist_max = np.max(dists_per_sig_comb)
-        dist_sum = np.max(dists_per_sig_comb)
+        dist_sum = np.sum(dists_per_sig_comb)
         dist_max_sig_index = inds_max
         dist_W = pdist_comb
         error_W = beta_divergence(model.W, W_simul, beta = 2)
