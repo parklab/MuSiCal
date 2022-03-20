@@ -97,7 +97,6 @@ def validate(model,
         indices_without_new_sigs = np.where(np.char.find('Sig_N', model.signature_names_all[i]) == -1)[0]
         if len(indices_without_new_sigs) > 0:        
             best_grid_indices = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
-            best_grid_indices = best_indices_without_new_sigs
         if len(indices_without_new_sigs) > 0:
             best_grid_indices_sum = [index for item,index in enumerate(best_grid_indices_sum) if item in indices_without_new_sigs]
             
