@@ -1,7 +1,7 @@
 
-MuSiCal (<ins>Mu</ins>tational <ins>Si</ins>gnature <ins>Cal</ins>culator) is a comprehensive toolkit for mutational signature analysis. It leverages novel algorithmic developments to enable accurate signature assignment as well as robust and sensitive signature discovery.
+![MuSiCal workflow](./images/musical_logo.png)
 
-![MuSiCal workflow](./images/musical_workflow.png)
+MuSiCal (<ins>Mu</ins>tational <ins>Si</ins>gnature <ins>Cal</ins>culator) is a comprehensive toolkit for mutational signature analysis. It leverages novel algorithmic developments to enable accurate signature assignment as well as robust and sensitive signature discovery.
 
 ## Install
 
@@ -37,4 +37,6 @@ Currently, there are two places where matlab codes could be used: SPA initializa
 
 ## Usage
 
-The input matrix X can be a numpy array or a pandas DataFrame. Note that columns should be samples and rows should be features (e.g., 96 trinucleotide features).
+### General introduction
+
+![MuSiCal workflow](./images/musical_workflow.png)
