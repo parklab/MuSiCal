@@ -1,6 +1,7 @@
 """Main class for the refitting problem"""
 
 import numpy as np
+import scipy as sp
 from .nnls import nnls
 from .nnls_sparse import SparseNNLS
 from .utils import match_signature_to_catalog_nnls_sparse, beta_divergence, get_sig_indices_associated
@@ -26,21 +27,25 @@ def refit_matrix(X, W, method = 'likelihood_bidirectional',
    # we could consider moving nnls function in here from nnls.py. I added it here
 
    H = []
-   if method == 'none':
+   if method == None:
        for x in X.T:
            h, _ = sp.optimize.nnls(W, x)
            H.append(h)
-
+       H = np.array(H)
+       X_reconstructed = np.array([W.values @ h for h in H.T.values]).T
+       
    else:
        sparse_method = SparseNNLS(method = method,
                                   thresh1 = thresh1,
                                   thresh2 = thresh2,
                                   indices_associated_sigs = indices_associated_sigs)
        sparse_method.fit(X, W)
-       H = sparse_method.H    
-   H = np.array(H)
-   reconstruction_error = beta_divergence(X, np.array(sparse_method.X_reconstructed), beta=1, square_root=False)
+       H = sparse_method.H
+       X_reconstructed = sparse_method.X_reconstructed
+   reconstruction_error = beta_divergence(X, np.array(X_reconstructed), beta=1, square_root=False)
 
+   H = np.array(H)
+   
    return H, reconstruction_error
 
 def param_search_same_length(v1, v2, v3 = None):
@@ -224,7 +229,8 @@ def reassign(model, W_catalog, signatures, force_assign_associated = False):  # 
                         if not (signames_this == signames_this_tmp).all():
                             signames_this = signames_this_tmp
                             W_s_this = W_catalog[:,[index for index,item in enumerate(signatures) if item in signames_this]]
-
+                else:
+                    indices_associated_sigs = None
                 H_s_this, reco_error = refit_matrix(X, W_s_this,
                                                     method = method_sparse,
                                                     thresh1 = thresh1[i],

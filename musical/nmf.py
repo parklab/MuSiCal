@@ -174,8 +174,7 @@ class NMF:
                  tol=1e-4,
                  conv_test_freq=10,
                  conv_test_baseline=None,
-                 verbose=0#,
-                 #eng=None
+                 verbose=0
                  ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -197,14 +196,12 @@ class NMF:
         self.conv_test_freq = conv_test_freq
         self.conv_test_baseline = conv_test_baseline
         self.verbose = verbose
-        #self.eng = eng
 
-    def fit(self, eng=None):
+    def fit(self):
         W_init, H_init = initialize_nmf(self.X, self.n_components,
                                         init=self.init,
                                         init_W_custom=self.init_W_custom,
-                                        init_H_custom=self.init_H_custom,
-                                        eng=eng)
+                                        init_H_custom=self.init_H_custom)
         self.W_init = W_init
         self.H_init = H_init
 

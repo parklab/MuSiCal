@@ -10,7 +10,6 @@ from .catalog import load_catalog
 from .preprocessing import remove_samples_based_on_gini, identify_distinct_cluster
 from .cluster import OptimalK
 from .simulation import simulate_LDA
-from .nnls_sparse_exact import ExactSparseNNLS
 from .nnls_sparse import SparseNNLS
 
 __all__ = ['beta_divergence',
@@ -25,5 +24,4 @@ __all__ = ['beta_divergence',
            'identify_distinct_cluster',
            'OptimalK',
            'simulate_LDA',
-           'ExactSparseNNLS',
            'SparseNNLS']

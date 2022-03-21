@@ -92,7 +92,7 @@ class Catalog:
         elif 'Indel' in self._name:
             self._sig_type = 'Indel'
 
-    def restrict_catalog(self, tumor_type = None, is_MMRD = False, is_PPD = False):
+    def restrict_catalog(self, tumor_type = None, is_MMRD = True, is_PPD = True):
         if tumor_type != None:
             if self._sig_type == '':
                 raise ValueError('Supported for SBS and Indel catalogs')
@@ -118,6 +118,12 @@ class Catalog:
             if not is_PPD:
                 self._signatures = [item for index,item in enumerate(self._signatures) if item not in signatures_PPD]
                 self._W = self._W[self._signatures]
+
+    def show_tumor_type_options(self):
+        if self._sig_type == '':
+            raise ValueError('Supported for SBS and Indel catalogs')
+        tts_sigs = pd.read_csv(importlib.resources.open_text(data, 'TumorType_' + self._sig_type + '_Signatures.csv'), sep =',')        
+        return np.unique(np.array(tts_sigs['tumor_type']))
 
         
     def normalize_W_catalog(self, sequencing = 'WES'):

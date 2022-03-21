@@ -33,6 +33,11 @@ def validate(model,
     dist_max_sig_index_all = []
     nsig = []
     nsig = np.array(nsig)
+    
+    # fix lambda 
+    model.mvnmf_hyperparameter_method = 'fixed'
+    model.mvnmf_lambda_tilde_grid = np.float(model.lambda_tilde_all[model.n_components][0])
+
     if model.n_grid > 1:
         index = 0
         for i in range(model.n_grid): 
@@ -92,7 +97,6 @@ def validate(model,
         indices_without_new_sigs = np.where(np.char.find('Sig_N', model.signature_names_all[i]) == -1)[0]
         if len(indices_without_new_sigs) > 0:        
             best_grid_indices = [index for item,index in enumerate(best_grid_indices) if item in indices_without_new_sigs]
-            best_grid_indices = best_indices_without_new_sigs
         if len(indices_without_new_sigs) > 0:
             best_grid_indices_sum = [index for item,index in enumerate(best_grid_indices_sum) if item in indices_without_new_sigs]
             
@@ -126,6 +130,7 @@ def validate(model,
         best_grid_index = None
         best_grid_index_sum = None
         best_grid_indices = None
+        best_grid_indices_sum = None
         W_s = model.W_s
         H_s = model.H_s
         pdist = {}
@@ -142,13 +147,7 @@ def validate(model,
             W_simul_this[j] = model_simul.W
             H_simul_this[j] = model_simul.H
 
-            _,_,pdist[j] = match_catalog_pair(model.W, model_simul.W, metric = metric_dist)
-
-
-        pdist_comb = [pdist[0], pdist[1], pdist[2]]
-        dist_W = np.diagonal(pdist_comb)        
-        dists_per_sig_comb = np.diagonal(np.average(pdist_comb, axis = 2))
-        
+       
         W_simul_comb = [W_simul_this[0], W_simul_this[1], W_simul_this[2]]
         H_simul_comb = [H_simul_this[0], H_simul_this[1], H_simul_this[2]]
         X_simul_comb = [X_simul_this[0], X_simul_this[1], X_simul_this[2]]
@@ -156,14 +155,17 @@ def validate(model,
         X_simul = np.average(X_simul_comb, axis = 0)
         W_simul = np.average(W_simul_comb, axis = 0)
         H_simul = np.average(H_simul_comb, axis = 0)
+
+        _, _, pdist_comb = match_catalog_pair(model.W, W_simul, metric = metric_dist)
+        dists_per_sig_comb = np.diagonal(pdist_comb)
                 
         inds_max = np.where(np.max(dists_per_sig_comb) == dists_per_sig_comb)
         dist_max = np.max(dists_per_sig_comb)
-        dist_sum = np.max(dists_per_sig_comb)
+        dist_sum = np.sum(dists_per_sig_comb)
         dist_max_sig_index = inds_max
-        dist_W = pdist
+        dist_W = pdist_comb
         error_W = beta_divergence(model.W, W_simul, beta = 2)
         error_H = beta_divergence(model.H, H_simul, beta = 2)
         
-    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
+    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_sum, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
 

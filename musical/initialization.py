@@ -10,34 +10,6 @@ import warnings
 from .nnls import nnls
 
 
-def _init_spa_matlab(X, n_components, normalize_X=True, eng=None, normalize_W=True):
-    ### Matlab engine
-    import matlab.engine
-    import importlib.resources
-    with importlib.resources.path('musical', 'matlab') as filepath:
-        MATLABPATH = str(filepath)
-    if type(eng) is not matlab.engine.matlabengine.MatlabEngine:
-        eng = matlab.engine.start_matlab()
-    eng.addpath(MATLABPATH, nargout=0)
-
-    ### Calculation
-    n_components = int(n_components)
-    if normalize_X:
-        X = normalize(X, norm='l1', axis=0) # This is redundant normalization.
-    if normalize_X:
-        normalize_X = 1
-    else:
-        normalize_X = 0
-    X_ML = matlab.double(X.tolist())
-    K_ML, normM_ML, U_ML = eng.FastSepNMF(X_ML, n_components, normalize_X, nargout=3)
-    K = np.asarray(K_ML._data).astype(int) - 1 # Convert to python index. Matlab uses 1-index
-    W = X[:, K]
-    if normalize_W:
-        W = normalize(W, norm='l1', axis=0)
-    H = nnls(X, W)
-    return W, H, K
-
-
 def _spa(M, r):
     """Python version of SPA algorithm
 
@@ -111,7 +83,6 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
                    init_cluster_metric='cosine',
                    init_cluster_linkage='average',
                    init_cluster_max_ncluster=100, init_cluster_min_nsample=1,
-                   eng=None,
                    init_W_custom=None, init_H_custom=None):
     """Algorithms for NMF initialization
 
@@ -140,8 +111,6 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
 
         - 'spa':
 
-        - 'spa-matlab':
-
         - 'custom':
 
     init_normalize_W : bool
@@ -159,11 +128,11 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
     ################################################
     # This is necassary when n_components is of type numpy.int64, which is not supported by matlab.
     n_components = int(n_components)
-    if init not in ['random', 'nndsvd', 'nndsvda', 'nndsvdar', 'cluster', 'spa', 'spa-matlab', 'custom']:
+    if init not in ['random', 'nndsvd', 'nndsvda', 'nndsvdar', 'cluster', 'spa', 'custom']:
         raise ValueError('Invalid init parameter.')
 
     if init_normalize_W is None:
-        if init in ['cluster', 'spa', 'spa-matlab']:
+        if init in ['cluster', 'spa']:
             init_normalize_W = True
         else:
             init_normalize_W = False
@@ -171,7 +140,7 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
         if init_normalize_W and init == 'custom':
             warnings.warn('init_normalize_W is set to True and init is custom. This might change init_W_custom.',
                           UserWarning)
-        if (not init_normalize_W) and init in ['spa', 'spa-matlab']:
+        if (not init_normalize_W) and init in ['spa']:
             warnings.warn('init is %r but init_normalize_W is set to False. Normalizing W is recommended.' % init,
                           UserWarning)
         if (not init_normalize_W) and init == 'cluster':
@@ -182,7 +151,7 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
         raise TypeError('Invalid parameter type for init_normalize_W.')
 
     if init_refit_H is None:
-        if init in ['cluster', 'spa', 'spa-matlab']:
+        if init in ['cluster', 'spa']:
             init_refit_H = True
         else:
             init_refit_H = False
@@ -193,7 +162,7 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
         if init_refit_H and init in ['random', 'nndsvd', 'nndsvda', 'nndsvdar']:
             warnings.warn('init_refit_H is set to True and init is %r. This might not be intended.' % init,
                           UserWarning)
-        if (not init_refit_H) and init in ['cluster', 'spa', 'spa-matlab']:
+        if (not init_refit_H) and init in ['cluster', 'spa']:
             warnings.warn('init_refit_H is set to False and init is %r. H will be calculated by NNLS refitting anyway.' % init,
                           UserWarning)
             init_refit_H = True
@@ -237,10 +206,6 @@ def initialize_nmf(X, n_components, init='random', init_normalize_W=None,
                                 linkage=init_cluster_linkage,
                                 max_ncluster=init_cluster_max_ncluster,
                                 min_nsample=init_cluster_min_nsample)
-        return W, H
-    elif init == 'spa-matlab':
-        W, H, _ = _init_spa_matlab(X, n_components, normalize_X=True,
-                                   eng=eng, normalize_W=init_normalize_W)
         return W, H
     elif init == 'spa':
         W, H, _ = _init_spa(X, n_components, normalize_X=True,
