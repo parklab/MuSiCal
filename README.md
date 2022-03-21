@@ -1,9 +1,16 @@
 
 ![MuSiCal workflow](./images/musical_logo.png)
 
-MuSiCal (<ins>Mu</ins>tational <ins>Si</ins>gnature <ins>Cal</ins>culator) is a comprehensive toolkit for mutational signature analysis. It leverages novel algorithmic developments to enable accurate signature assignment as well as robust and sensitive signature discovery.
+**MuSiCal** (<ins>Mu</ins>tational <ins>Si</ins>gnature <ins>Cal</ins>culator) is a comprehensive toolkit for mutational signature analysis. It leverages novel algorithmic developments to enable accurate signature assignment as well as robust and sensitive signature discovery.
 
-## Install
+## Installation
+
+### Third-party distributions
+
+MuSiCal will be made available via *anaconda* soon. 
+
+
+### Installing from source
 
 Create a conda environment:
 ```
@@ -23,17 +30,6 @@ Finally install MuSiCal in the development mode
 cd  /Users/hujin/GitHub
 sudo -H pip install -e ./MuSiCal
 ```
-
-If Matlab codes are to be used, then the python interface for Matlab needs to be installed:
-```
-cd //Applications/MATLAB_R2019b.app/extern/engines/python
-python setup.py build --build-base="//anaconda3/envs/python37_musical/matlab2019b" install
-```
-Note that matlab2019b or above is required for python3.7.
-
-Note that matlab is not required. If the python-matlab interface is not installed, MuSiCal should run just fine (not tested yet).
-
-Currently, there are two places where matlab codes could be used: SPA initialization and mvNMF calculation. We wrote python codes for both algorithms.
 
 ## Usage
 
