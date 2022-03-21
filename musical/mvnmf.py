@@ -22,42 +22,6 @@ from .nnls import nnls
 EPSILON = np.finfo(np.float32).eps
 EPSILON2 = np.finfo(np.float16).eps
 
-def _solve_mvnmf_matlab(X, W, H, eng=None, lambda_tilde=0.001, delta=0.1, max_iter=100, gamma=1.0):
-    """Mvnmf solver
-
-    Solve mvnmf using the matlab code betaNMF_logdetKL.
-    """
-    ### Matlab engine
-    import matlab.engine
-    import importlib.resources
-    with importlib.resources.path('musical', 'matlab') as filepath:
-        MATLABPATH = str(filepath)
-    if type(eng) is not matlab.engine.matlabengine.MatlabEngine:
-        eng = matlab.engine.start_matlab()
-    eng.addpath(MATLABPATH, nargout=0)
-
-    ### Solver
-    n_features, n_samples = X.shape
-    n_components = W.shape[1]
-    delta = float(delta) # Necessary for matlab code
-    lambda_tilde = float(lambda_tilde)
-    gamma = float(gamma)
-
-    W_ML = matlab.double(W.tolist())
-    H_ML = matlab.double(H.tolist())
-    X_ML = matlab.double(X.tolist())
-    alpha = 0.0
-    W_ML, H_ML, losses_ML, t, reconstruction_errors_ML, volumes_ML, line_search_steps_ML, gammas_ML, Lambda = eng.betaNMF_logdetKL(X_ML, W_ML, H_ML, n_components, max_iter, lambda_tilde, delta, gamma, alpha, nargout=9)
-    W = np.asarray(W_ML._data).reshape(W_ML.size, order='F')
-    H = np.asarray(H_ML._data).reshape(H_ML.size, order='F')
-    losses = np.asarray(losses_ML._data)
-    reconstruction_errors = np.asarray(reconstruction_errors_ML._data)
-    volumes = np.asarray(volumes_ML._data)
-    line_search_steps = np.asarray(line_search_steps_ML._data)
-    gammas = np.asarray(gammas_ML._data)
-
-    return W, H, Lambda, losses, reconstruction_errors, volumes, line_search_steps, gammas
-
 
 def _volume_logdet(W, delta):
     K = W.shape[1]
@@ -292,8 +256,7 @@ class MVNMF:
                  tol=1e-4,
                  conv_test_freq=10,
                  conv_test_baseline=None,
-                 verbose=0#,
-                 #eng=None
+                 verbose=0
                  ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -317,14 +280,12 @@ class MVNMF:
         self.conv_test_freq = conv_test_freq
         self.conv_test_baseline = conv_test_baseline
         self.verbose = verbose
-        #self.eng = eng
 
-    def fit(self, eng=None):
+    def fit(self):
         W_init, H_init = initialize_nmf(self.X, self.n_components,
                                         init=self.init,
                                         init_W_custom=self.init_W_custom,
-                                        init_H_custom=self.init_H_custom,
-                                        eng=eng)
+                                        init_H_custom=self.init_H_custom)
         self.W_init = W_init
         self.H_init = H_init
 
@@ -391,8 +352,7 @@ class wrappedMVNMF:
                  conv_test_baseline=None,
                  ncpu=1,
                  noise=False, # Whether or not to add noise to the samplewise errors.
-                 verbose=0#,
-                 #eng=None
+                 verbose=0
                  ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             X = np.array(X).astype(float)
@@ -432,7 +392,6 @@ class wrappedMVNMF:
         elif np.issubdtype(type(noise), np.floating):
             self.noise = noise
         self.verbose = verbose
-        #self.eng = eng
 
     def _job(self, lambda_tilde):
         np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
@@ -449,15 +408,14 @@ class wrappedMVNMF:
             print('mvNMF with lambda_tilde = %.5g finished.' % lambda_tilde)
         return model
 
-    def fit(self, eng=None):
+    def fit(self):
         ##################################################
         ################# Initialization #################
         ##################################################
         W_init, H_init = initialize_nmf(self.X, self.n_components,
                                         init=self.init,
                                         init_W_custom=self.init_W_custom,
-                                        init_H_custom=self.init_H_custom,
-                                        eng=eng)
+                                        init_H_custom=self.init_H_custom)
         self.W_init = W_init
         self.H_init = H_init
 
@@ -478,7 +436,7 @@ class wrappedMVNMF:
                               max_iter=self.max_iter, min_iter=self.min_iter, tol=self.tol,
                               conv_test_freq=self.conv_test_freq, conv_test_baseline=self.conv_test_baseline,
                               verbose=self.verbose)
-                model.fit(eng=eng)
+                model.fit()
                 models.append(model)
         else:
             workers = multiprocessing.Pool(self.ncpu)
