@@ -12,12 +12,12 @@ with open('LICENSE') as f:
 setup(
     name='MuSiCal',
     version='0.1.0',
-    description='General tools for mutational signature analysis',
+    description='A comprehensive toolkit for mutational signature analysis',
     long_description=readme,
-    author='Hu Jin',
-    author_email='hu_jin@hms.harvard.edu',
-    url='https://github.com/Hu-JIN/MuSiCal',
+    author='Hu Jin, Doga Gulhan',
+    author_email='hu_jin@hms.harvard.edu, doga_gulhan@hms.harvard.edu',
+    url='https://github.com/parklab/MuSiCal',
     license=license,
     packages=find_packages(exclude=('tests', 'docs', 'benchmarks',
-                                    'examples', 'dev'))
+                                    'examples', 'dev', 'images'))
 )
