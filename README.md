@@ -17,17 +17,21 @@ Create a conda environment:
 ```
 conda create -n python37_musical python=3.7
 ```
+
 Activate the environment with `conda activate python37_musical` or `source activate python37_musical`, depending on the version of conda you have on your system.
+
 Install MuSiCal:
 ```
 conda install -c bioconda musical
 ```
 
-For now, please install from source. 
+For now, please follow the instructions below to install from source.
 
 ### Installing from source
 
-First, download the latest repository (e.g., via `git clone`, by downloading the zip file directly, etc.). Then, create a conda environment:
+First, download the latest repository (e.g., via `git clone`, by downloading the zip file directly, etc.).
+
+Then, create a conda environment:
 ```
 conda create -n python37_musical python=3.7
 ```
@@ -52,15 +56,23 @@ pip install -e ./MuSiCal
 
 If `pip install` fails, try adding `sudo -H`.
 
-### Installing Jupyter Notebook
+### Setting up Jupyter Notebook
 
-After installing MuSiCal (either from third-party distributions or from source), you need to set up Jupyter Notebook to try out the [example scripts](./examples). Assuming that the `python37_musical` environment is activated, use:
+After installing MuSiCal (either from third-party distributions or from source), you need to set up Jupyter Notebook to try out the [example scripts](./examples).
+
+Assuming that the `python37_musical` environment is activated, do:
 ```
 conda install ipykernel
 python -m ipykernel install --user --name python37_musical --display-name "python37_musical"
 ```
 
-Now, if you deactivate
+Since Jupyter Notebook is installed in the `base` environment, you need to deactivate the `python37_musical` environment with `conda deactivate` or `source deactivate` (depending on your conda version) to access Jupyter Notebook. You can launch Jupyter Notebook with
+```
+jupyter notebook
+```  
+If you have installed Anaconda, you can also launch Jupyter Notebook from the graphical interface of Anaconda-Navigator.
+
+Now you are ready to try out the [example scripts](./examples). Remember to set the kernel of the notebook to `python37_musical`. 
 
 ## Usage
 
