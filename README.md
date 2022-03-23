@@ -1,5 +1,5 @@
 
-![MuSiCal workflow](./images/musical_logo.png)
+![MuSiCal logo](./images/musical_logo.png)
 
 **MuSiCal** (<ins>Mu</ins>tational <ins>Si</ins>gnature <ins>Cal</ins>culator) is a comprehensive toolkit for mutational signature analysis. It leverages novel algorithmic developments to enable accurate signature assignment as well as robust and sensitive signature discovery.
 
@@ -7,7 +7,7 @@
 
 ### Third-party distributions
 
-MuSiCal will be made available via *anaconda* soon. 
+MuSiCal will be made available via *anaconda* soon.
 
 
 ### Installing from source
