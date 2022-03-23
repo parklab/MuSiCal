@@ -146,7 +146,7 @@ def validate(model,
         W_simul_all[0] = np.average(W_simul_comb, axis = 0)
         H_simul_all[0] = np.average(H_simul_comb, axis = 0)
 
-        _, _, pdist_comb = match_catalog_pair(model.W, W_simul, metric = metric_dist)
+        _, _, pdist_comb = match_catalog_pair(model.W, W_simul_all[0], metric = metric_dist)
         dist_W_all[0] = pdist_comb
         dists_per_sig_comb = np.diagonal(pdist_comb)
                 
@@ -155,8 +155,8 @@ def validate(model,
         dist_max_all.append(np.max(dists_per_sig_comb))
         dist_sum_all.append(np.sum(dists_per_sig_comb))
         dist_W_all[0] = pdist_comb
-        error_W_all.append(beta_divergence(model.W, W_simul, beta = 2))
-        error_H_all.append(beta_divergence(model.H, H_simul, beta = 2))
+        error_W_all.append(beta_divergence(model.W, W_simul_all[0], beta = 2))
+        error_H_all.append(beta_divergence(model.H, H_simul_all[0], beta = 2))
         best_grid_index = 0
         best_grid_index_sum = 0
         
