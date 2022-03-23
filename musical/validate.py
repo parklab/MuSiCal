@@ -115,16 +115,6 @@ def validate(model,
         min_error_H_sum = np.min(np.array(error_H_all)[best_grid_indices_sum])
         best_grid_index_sum = np.array(best_grid_indices_sum)[np.array(error_H_all)[best_grid_indices_sum] == min_error_H_sum]
         best_grid_index_sum = np.asscalar(best_grid_index_sum)
-        
-        W_simul = W_simul_all[best_grid_index]
-        H_simul = H_simul_all[best_grid_index]
-        X_simul = X_simul_all[best_grid_index]
-        error_W = error_W_all[best_grid_index]
-        error_H = error_H_all[best_grid_index]
-        dist_W = dist_W_all[best_grid_index]
-        dist_max = dist_max_all[best_grid_index]
-        dist_max_sig_index = dist_max_sig_index_all[best_grid_index]        
-
 
     else:  # if there was no grid search
         best_grid_index = None
@@ -152,20 +142,23 @@ def validate(model,
         H_simul_comb = [H_simul_this[0], H_simul_this[1], H_simul_this[2]]
         X_simul_comb = [X_simul_this[0], X_simul_this[1], X_simul_this[2]]
             
-        X_simul = np.average(X_simul_comb, axis = 0)
-        W_simul = np.average(W_simul_comb, axis = 0)
-        H_simul = np.average(H_simul_comb, axis = 0)
+        X_simul_all[0] = np.average(X_simul_comb, axis = 0)
+        W_simul_all[0] = np.average(W_simul_comb, axis = 0)
+        H_simul_all[0] = np.average(H_simul_comb, axis = 0)
 
         _, _, pdist_comb = match_catalog_pair(model.W, W_simul, metric = metric_dist)
+        dist_W_all[0] = pdist_comb
         dists_per_sig_comb = np.diagonal(pdist_comb)
                 
         inds_max = np.where(np.max(dists_per_sig_comb) == dists_per_sig_comb)
-        dist_max = np.max(dists_per_sig_comb)
-        dist_sum = np.sum(dists_per_sig_comb)
-        dist_max_sig_index = inds_max
-        dist_W = pdist_comb
-        error_W = beta_divergence(model.W, W_simul, beta = 2)
-        error_H = beta_divergence(model.H, H_simul, beta = 2)
+        dist_max_sig_index_all.append(inds_max)
+        dist_max_all.append(np.max(dists_per_sig_comb))
+        dist_sum_all.append(np.sum(dists_per_sig_comb))
+        dist_W_all[0] = pdist_comb
+        error_W_all.append(beta_divergence(model.W, W_simul, beta = 2)
+        error_H_all.append(beta_divergence(model.H, H_simul, beta = 2)
+        best_grid_index = 0
+        best_grid_index_sum = 0
         
-    return W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_sum, dist_max_sig_index,  dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, X_simul_all, error_W_all, error_H_all, dist_W_all
+    return W_simul_all, H_simul_all, X_simul_all, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W_all, error_H_all, dist_W_all, dist_max_sig_index_all,  dist_max_all, dist_sum_all
 
