@@ -360,7 +360,7 @@ class wrappedMVNMF:
         self.n_features, self.n_samples = self.X.shape
         self.n_components = n_components
         if lambda_tilde_grid is None:
-            lambda_tilde_grid = np.array([1e-15, 1e-14, 1e-13, 1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1.0, 10.0, 100.0])
+            lambda_tilde_grid = np.array([1e-10, 2e-10, 5e-10, 1e-9, 2e-9, 5e-9, 1e-8, 2e-8, 5e-8, 1e-7, 2e-7, 5e-7, 1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 1e-1, 2e-1, 5e-1, 1.0, 2.0])
         else:
             lambda_tilde_grid = np.array(lambda_tilde_grid)
         self.lambda_tilde_grid = lambda_tilde_grid
