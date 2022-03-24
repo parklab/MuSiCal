@@ -1147,22 +1147,21 @@ class DenovoSig:
         if self.n_grid > 1:
             self.W_s = self.W_s_all[best_grid_index_sum]
             self.H_s = self.H_s_all[best_grid_index_sum]
+            self.signature_names = self.signature_names_all[best_grid_index_sum]
+            self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index_sum]
+            self.set_params(thresh1 = [self.thresh1_all[best_grid_index_sum]],
+                            thresh2 = [self.thresh2_all[best_grid_index_sum]],
+                            thresh1_match = [self.thresh1_match_all[best_grid_index_sum]],
+                            thresh2_match = [self.thresh2_match_all[best_grid_index_sum]],
+                            thresh_new_sig = [self.thresh_new_sig_all[best_grid_index_sum]])
         self.W_simul = self.W_simul_all[best_grid_index_sum]
         self.H_simul = self.H_simul_all[best_grid_index_sum]
         self.X_simul = self.X_simul_all[best_grid_index_sum]
         self.dist_W_simul = self.dist_W_all[best_grid_index_sum]
         self.error_W_simul = self.error_W_all[best_grid_index_sum]
         self.error_H_simul = self.error_H_all[best_grid_index_sum]
-        self.signature_names = self.signature_names_all[best_grid_index_sum]
         self.dist_max_simul = self.dist_max_all[best_grid_index_sum]
         self.dist_sum_simul = self.dist_sum_all[best_grid_index_sum]
-        self.reconstruction_error_s = self.reconstruction_error_s_all[best_grid_index_sum]
-        self.set_params(thresh1 = [self.thresh1_all[best_grid_index_sum]],
-                        thresh2 = [self.thresh2_all[best_grid_index_sum]],
-                        thresh1_match = [self.thresh1_match_all[best_grid_index_sum]],
-                        thresh2_match = [self.thresh2_match_all[best_grid_index_sum]],
-                        thresh_new_sig = [self.thresh_new_sig_all[best_grid_index_sum]])
-
         if clear_grid:
             self.clear_grid()
         return self
