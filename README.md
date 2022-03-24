@@ -115,7 +115,7 @@ See the [example scripts](./examples/example_refitting.ipynb) for more detailed 
 
 ### *In silico* validation
 
-See the [example scripts](./examples/example_validate.ipynb) for more detailed instructions on *in silico* validation.
+See the [example scripts](./examples/example_validation.ipynb) for more detailed instructions on *in silico* validation.
 
 ### Preprocessing
 
