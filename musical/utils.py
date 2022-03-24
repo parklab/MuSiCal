@@ -401,7 +401,7 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
 
 def match_signature_to_catalog_nnls_sparse(w, W_catalog, method='likelihood_bidirectional',
                                             thresh1 = 0.001, thresh2 = None):
-    
+
     sparse_method = SparseNNLS(method = method,
                                thresh1 = thresh1,
                                thresh2 = thresh2)
@@ -421,9 +421,6 @@ def tag_similar_signatures(W, metric = 'cosine'):
         inds = np.where(pdist[i, :] < 0.05)
         similar_signatures[i] = inds
     return similar_signatures
-
-def save_signature_exposure_tables(model):
-    model.W
 
 
 def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
@@ -650,7 +647,7 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
 def get_sig_indices_associated(signatures, signatures_catalog):
     signatures = np.array(signatures)
     nsig = signatures.size
-   
+
     for entry in sigs_associated:
         has_entry = False
         missing_item = []
@@ -673,11 +670,10 @@ def get_sig_indices_associated(signatures, signatures_catalog):
         has_entry = False
         for item in entry:
             if item in signatures:
-                has_entry = True              
+                has_entry = True
                 for i in list(np.where(item == np.array(signatures))[0]):
                     indices_this.append(i)
         if has_entry:
             indices_associated.append(indices_this)
-    
-    return indices_associated, signatures
 
+    return indices_associated, signatures
