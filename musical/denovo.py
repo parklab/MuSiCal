@@ -500,28 +500,28 @@ class DenovoSig:
                  min_n_components=None,
                  max_n_components=None,
                  init='random',
-                 method='nmf',
+                 method='mvnmf',
                  normalize_X=False, # whether or not to normalize the input matrix for NMF/mvNMF
                  bootstrap=True,
-                 n_replicates=100,
-                 max_iter=1000000,
+                 n_replicates=20,
+                 max_iter=100000,
                  min_iter=10000,
-                 conv_test_freq=100,
+                 conv_test_freq=1000,
                  conv_test_baseline='min-iter',
-                 tol=1e-10,
+                 tol=1e-8,
                  ncpu=1,
                  verbose=0,
                  # Specific for result filtering:
                  filter=True,
-                 filter_method='error_distribution',
-                 filter_thresh=0.05,
+                 filter_method='error_MAE',
+                 filter_thresh=5.0,
                  filter_percentile=90,
                  # Specific for result gathering:
                  cluster_method='hierarchical',
                  # Specific for n_components selection:
                  select_method='consistency',
                  select_pthresh=0.05, # Not used by the consistency method
-                 select_sil_score_mean_thresh=0.8,
+                 select_sil_score_mean_thresh=0.7,
                  select_sil_score_min_thresh=0.2,
                  select_n_replicates_filter_ratio_thresh=0.2,
                  # mvnmf specific:
@@ -994,7 +994,7 @@ class DenovoSig:
                    method_sparse = None,
                    thresh1 = None,
                    thresh2 = None):
- 
+
         if use_catalog != None:
            self.use_catalog = use_catalog
         if catalog_name != None:
@@ -1058,7 +1058,7 @@ class DenovoSig:
             else:
                 model_new.set_params(thresh1_match = [self.thresh1_match],
                                     thresh2_match = [self.thresh2_match])
-                
+
         return model_new
 
 
