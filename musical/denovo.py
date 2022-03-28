@@ -535,7 +535,7 @@ class DenovoSig:
                  use_catalog=True,
                  catalog_name='COSMIC_v3p1_SBS_WGS',
                  thresh1_match = [0.010],
-                 thresh2_match = [0.010],
+                 thresh2_match = [None],
                  thresh_new_sig = [0.8],
                  method_sparse = 'likelihood_bidirectional',
                  thresh1 = [0.001],
@@ -1142,7 +1142,7 @@ class DenovoSig:
         self.dist_max_all = dist_max_all
         self.dist_sum_all = dist_sum_all
         self.dist_max_simul_sig_index_all = dist_max_sig_index_all
-        
+
         # to use maximum distance only change best_grid_index_sum to best_grid_index
         if self.n_grid > 1:
             self.W_s = self.W_s_all[best_grid_index_sum]
@@ -1165,4 +1165,3 @@ class DenovoSig:
         if clear_grid:
             self.clear_grid()
         return self
-
