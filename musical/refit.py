@@ -134,7 +134,7 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
         W_s_grid[thresh] = W_s
     return W_s_grid, model
 
-def assign(X, W, W_catalog=None,
+def assign(X, W, W_catalog,
            method='likelihood_bidirectional',
            thresh_match=None,
            thresh_refit=None,

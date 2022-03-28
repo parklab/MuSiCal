@@ -1,4 +1,9 @@
-"""Main class for de-novo extraction of signatures"""
+"""Main class for de-novo extraction of signatures
+
+TODO:
+1. Universally work with pd dataframes in DenovoSig.
+2. We need better structuring of the class. E.g., use @ property to protect some attributes. 
+"""
 
 import numpy as np
 import scipy as sp
@@ -23,7 +28,7 @@ from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
 from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test
 from .nnls import nnls
-from .refit import reassign
+from .refit import reassign, assign, assign_grid
 from .validate import validate
 from .cluster import OptimalK, hierarchical_cluster
 
@@ -531,6 +536,7 @@ class DenovoSig:
                  mvnmf_gamma=1.0,
                  mvnmf_pthresh=0.05,
                  mvnmf_noise=False,
+                 # Parameters below will be removed. These parameters will be put into corresponding functions.
                  # Refitting:
                  use_catalog=True,
                  catalog_name='COSMIC_v3p1_SBS_WGS',
@@ -539,13 +545,19 @@ class DenovoSig:
                  thresh_new_sig = [0.8],
                  method_sparse = 'likelihood_bidirectional',
                  thresh1 = [0.001],
-                 thresh2 = [None],
-                 features = None
+                 thresh2 = [None]
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
-            X = np.array(X).astype(float)
-        self.X = X
+            self.X = np.array(X).astype(float)
         self.n_features, self.n_samples = self.X.shape
+        if isinstance(X, pd.DataFrame):
+            self.X_df = X.astype(float)
+        else:
+            self.X_df = pd.DataFrame(self.X,
+                                     columns=['Sample' + str(i) for i in range(1, self.n_samples + 1)],
+                                     index=['Feature' + str(i) for i in range(1, self.n_features + 1)])
+        self.samples = self.X_df.columns.values
+        self.features = self.X_df.index.values
         if min_n_components is None:
             min_n_components = 1
         self.min_n_components = min_n_components
@@ -597,7 +609,6 @@ class DenovoSig:
         self.method_sparse = method_sparse
         self.thresh1 = thresh1
         self.thresh2 = thresh2
-        self.features = features
 
     def _job(self, parameters):
         """parameters = (index_replicate, n_components, eng, lambda_tilde)
@@ -862,6 +873,10 @@ class DenovoSig:
         self.reconstruction_error = self.reconstruction_error_all[self.n_components]
         self.samplewise_reconstruction_errors = self.samplewise_reconstruction_errors_all[self.n_components]
         self.n_support = self.n_support_all[self.n_components]
+        self.W_df = pd.DataFrame(self.W, columns=['Sig' + str(i) for i in range(1, self.n_components + 1)],
+                                 index=self.features)
+        self.signatures = self.W_df.columns.values
+        self.H_df = pd.DataFrame(self.H, columns=self.samples, index=self.signatures)
         return self
 
     def fit(self, eng=None):
@@ -870,6 +885,8 @@ class DenovoSig:
         return self
 
     def plot_selection(self, title=None, plot_pvalues=True, outfile=None, figsize=None):
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
         sns.set_style('ticks')
         ##### Collect data
         sil_score_mean = np.array([self.sil_score_mean_all[n_components] for n_components in self.n_components_all])
@@ -984,6 +1001,79 @@ class DenovoSig:
 
         if outfile is not None:
             plt.savefig(outfile, bbox_inches='tight')
+
+    def assign(self, W_catalog, method_assign='likelihood_bidirectional',
+               thresh_match=None, thresh_refit=None, thresh_new_sig=0.8, indices_associated_sigs=None):
+        # Check if fit has been run
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if hasattr(self, '_assign_is_run'):
+            warnings.warn('self.assign has been previously called. This call will replace the previous results.',
+                          UserWarning)
+        if hasattr(self, '_assign_grid_is_run'):
+            warnings.warn('self.assign_grid has been previously called. Therefore running self.assign may make some attributes inconsistent. Be careful.',
+                          UserWarning)
+        # Check input
+        if not isinstance(W_catalog, pd.DataFrame):
+            raise ValueError('W_catalog needs to be a pd.DataFrame.')
+        if self.n_features != W_catalog.shape[0]:
+            raise ValueError('W_catalog has the wrong number of features.')
+        if np.sum(self.features == W_catalog.index.values) != self.n_features:
+            warnings.warn('W_catalog has different feature names. The feature names of W_catalog will be converted to self.features. Make sure that the features match.',
+                          UserWarning)
+            W_catalog.index = self.features
+        self.W_catalog = W_catalog
+        self.method_assign = method_assign
+        self.thresh_match = thresh_match
+        self.thresh_refit = thresh_refit
+        self.thresh_new_sig = thresh_new_sig
+        self.indices_associated_sigs = indices_associated_sigs
+        self.W_s, self.H_s = assign(self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
+                                    thresh_match=self.thresh_match, thresh_refit=self.thresh_refit, thresh_new_sig=self.thresh_new_sig,
+                                    indices_associated_sigs=self.indices_associated_sigs)
+        self._assign_is_run = True
+        return self
+
+    def assign_grid(self, W_catalog, method_assign='likelihood_bidirectional',
+                    thresh_match_grid=None, thresh_refit_grid=None, thresh_new_sig=0.8, indices_associated_sigs=None):
+        # Check if fit has been run
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if hasattr(self, '_assign_is_run'):
+            warnings.warn('self.assign has been previously called. Therefore running self.assign_grid may make some attributes inconsistent. Be careful.',
+                          UserWarning)
+        if hasattr(self, '_assign_grid_is_run'):
+            warnings.warn('self.assign_grid has been previously called. This call will replace the previous results.',
+                          UserWarning)
+        # Check input
+        if not isinstance(W_catalog, pd.DataFrame):
+            raise ValueError('W_catalog needs to be a pd.DataFrame.')
+        if self.n_features != W_catalog.shape[0]:
+            raise ValueError('W_catalog has the wrong number of features.')
+        if np.sum(self.features == W_catalog.index.values) != self.n_features:
+            warnings.warn('W_catalog has different feature names. The feature names of W_catalog will be converted to self.features. Make sure that the features match.',
+                          UserWarning)
+            W_catalog.index = self.features
+        self.W_catalog = W_catalog
+        self.method_assign = method_assign
+        self.thresh_match_grid = thresh_match_grid
+        self.thresh_refit_grid = thresh_refit_grid
+        self.thresh_new_sig = thresh_new_sig
+        self.indices_associated_sigs = indices_associated_sigs
+        self.W_s_grid_1d, self.H_s_grid, self.thresh_match_grid_unique = assign_grid(
+            self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
+            thresh_match_grid=self.thresh_match_grid, thresh_refit_grid=self.thresh_refit_grid,
+            thresh_new_sig=self.thresh_new_sig,
+            indices_associated_sigs=self.indices_associated_sigs,
+            ncpu=self.ncpu, verbose=self.verbose
+        )
+        self._assign_grid_is_run
+        return self
+
+
+    ###########################################################################
+    ############################# Old codes below #############################
+    ###########################################################################
 
     def set_params(self,
                    use_catalog = None,
