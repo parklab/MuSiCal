@@ -1036,6 +1036,10 @@ class DenovoSig:
         self.W_s, self.H_s = assign(self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
                                     thresh_match=self.thresh_match, thresh_refit=self.thresh_refit, thresh_new_sig=self.thresh_new_sig,
                                     indices_associated_sigs=self.indices_associated_sigs)
+        self.sigs_assigned = self.H_s.index[self.H_s.sum(1) > 0].values
+        self.n_sigs_assigned = len(self.sigs_assigned)
+        self.W_s = pd.DataFrame.copy(self.W_s[self.sigs_assigned])
+        self.H_s = pd.DataFrame.copy(self.H_s.loc[self.sigs_assigned])
         self._assign_is_run = True
         return self
 
@@ -1069,13 +1073,25 @@ class DenovoSig:
         self.thresh_refit_grid = thresh_refit_grid
         self.thresh_new_sig = thresh_new_sig
         self.indices_associated_sigs = indices_associated_sigs
-        self.W_s_grid_1d, self.H_s_grid, self.thresh_match_grid_unique = assign_grid(
+        W_s_grid_1d, H_s_grid, thresh_match_grid_unique = assign_grid(
             self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
             thresh_match_grid=self.thresh_match_grid, thresh_refit_grid=self.thresh_refit_grid,
             thresh_new_sig=self.thresh_new_sig,
             indices_associated_sigs=self.indices_associated_sigs,
             ncpu=self.ncpu, verbose=self.verbose
         )
+        self.W_s_grid = {}
+        self.H_s_grid = {}
+        self.sigs_assigned_grid = {}
+        self.n_sigs_assigned_grid = {}
+        for thresh_match in self.thresh_match_grid:
+            for thresh_refit in self.thresh_refit_grid:
+                sigs_assigned = H_s_grid[thresh_match][thresh_refit].index[H_s_grid[thresh_match][thresh_refit].sum(1) > 0].values
+                self.sigs_assigned_grid[(thresh_match, thresh_refit)] = sigs_assigned
+                self.W_s_grid[(thresh_match, thresh_refit)] = pd.DataFrame.copy(W_s_grid_1d[thresh_match][sigs_assigned])
+                self.H_s_grid[(thresh_match, thresh_refit)] = pd.DataFrame.copy(H_s_grid[thresh_match][thresh_refit].loc[sigs_assigned])
+                self.n_sigs_assigned_grid[(thresh_match, thresh_refit)] = len(sigs_assigned)
+        self.thresh_match_grid_unique = thresh_match_grid_unique
         self._assign_grid_is_run = True
         return self
 
@@ -1192,11 +1208,92 @@ class DenovoSig:
         self.H_frobenius_dist_mean = np.mean(self.H_frobenius_dist)
         return self
 
-
-
-
-    def validate_grid(self):
-        pass
+    def validate_grid(self, validate_n_replicates=1, W_cos_dist_thresh=0.02):
+        """Validation on a grid.
+        """
+        ################# Check running status and input
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if not hasattr(self, '_assign_grid_is_run'):
+            raise ValueError('Run assign_grid first.')
+        ################# Run validation
+        self.validate_n_replicates = validate_n_replicates
+        self.W_cos_dist_thresh = W_cos_dist_thresh
+        self.X_simul_grid = {}
+        self.W_simul_grid = {}
+        self.H_simul_grid = {}
+        self.W_cos_dist_grid = {}
+        self.H_frobenius_dist_grid = {}
+        self.W_cos_dist_mean_grid = {}
+        self.H_frobenius_dist_mean_grid = {}
+        # Note that only unique thresh_match will be run.
+        for thresh_match in self.thresh_match_grid_unique:
+            for thresh_refit in self.thresh_refit_grid:
+                X_simul = []
+                W_simul = []
+                H_simul = []
+                W_cos_dist = []
+                H_frobenius_dist = []
+                for i in range(0, self.validate_n_replicates):
+                    # Simulate data
+                    _X_simul = pd.DataFrame(simulate_count_matrix(self.W_s_grid[(thresh_match, thresh_refit)].values, self.H_s_grid[(thresh_match, thresh_refit)].values),
+                                            columns=self.samples, index=self.features)
+                    # Rerun de novo discovery
+                    model_simul = self._reinstantiate(_X_simul)
+                    model_simul.min_n_components = self.n_components # Fix n_components
+                    model_simul.max_n_components = self.n_components # Fix n_components
+                    model_simul.n_components_all = np.array([self.n_components]) # Fix n_components.
+                    if self.method == 'mvnmf': # If mvnmf, fix lambda_tilde
+                        model_simul.mvnmf_hyperparameter_method = 'fixed'
+                        model_simul.mvnmf_lambda_tilde_grid = float(self.lambda_tilde_all[self.n_components][0])
+                    model_simul.fit()
+                    # Collect data
+                    _W_simul, col_index, pdist = match_catalog_pair(self.W, model_simul.W, metric='cosine')
+                    _H_simul = model_simul.H[col_index, :]
+                    _W_cos_dist = pdist[np.arange(0, self.n_components), col_index].mean()
+                    _H_frobenius_dist = beta_divergence(self.H, _H_simul, beta=2, square_root=True)
+                    X_simul.append(_X_simul)
+                    W_simul.append(pd.DataFrame(_W_simul, columns=self.signatures, index=self.features))
+                    H_simul.append(pd.DataFrame(_H_simul, columns=self.samples, index=self.signatures))
+                    W_cos_dist.append(_W_cos_dist)
+                    H_frobenius_dist.append(_H_frobenius_dist)
+                self.X_simul_grid[(thresh_match, thresh_refit)] = X_simul
+                self.W_simul_grid[(thresh_match, thresh_refit)] = W_simul
+                self.H_simul_grid[(thresh_match, thresh_refit)] = H_simul
+                self.W_cos_dist_grid[(thresh_match, thresh_refit)] = W_cos_dist
+                self.H_frobenius_dist_grid[(thresh_match, thresh_refit)] = H_frobenius_dist
+                self.W_cos_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(W_cos_dist)
+                self.H_frobenius_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(H_frobenius_dist)
+        ################# Select best result
+        # Smallest W_cos_dist
+        W_cos_dist_min = np.min(list(self.W_cos_dist_mean_grid.values()))
+        # Candidates: W_cos_dist within W_cos_dist_min + self.W_cos_dist_thresh
+        candidate_grid_points = [key for key, value in self.W_cos_dist_mean_grid.items() if value <= W_cos_dist_min + self.W_cos_dist_thresh]
+        if len(candidate_grid_points) == 1:
+            self.best_grid_point = candidate_grid_points[0]
+        else:
+            # Look at number of assigned sigs
+            n_sigs_assigned_min = np.min([self.n_sigs_assigned_grid[key] for key in candidate_grid_points])
+            candidate_grid_points = [key for key in candidate_grid_points if self.n_sigs_assigned_grid[key] == n_sigs_assigned_min]
+            if len(candidate_grid_points) == 1:
+                self.best_grid_point = candidate_grid_points[0]
+            else:
+                # Look at H error
+                # Or choose the one with the strongest sparsity here.
+                tmp = [[key, self.H_frobenius_dist_mean_grid[key]] for key in candidate_grid_points]
+                tmp = sorted(tmp, key=itemgetter(1))
+                self.best_grid_point = tmp[0][0]
+        self.thresh_match = self.best_grid_point[0]
+        self.thresh_refit = self.best_grid_point[1]
+        self.W_s = self.W_s_grid[self.best_grid_point]
+        self.H_s = self.H_s_grid[self.best_grid_point]
+        self.sigs_assigned = self.sigs_assigned_grid[self.best_grid_point]
+        self.n_sigs_assigned = self.n_sigs_assigned_grid[self.best_grid_point]
+        self.W_cos_dist = self.W_cos_dist_grid[self.best_grid_point]
+        self.W_cos_dist_mean = self.W_cos_dist_mean_grid[self.best_grid_point]
+        self.H_frobenius_dist = self.H_frobenius_dist_grid[self.best_grid_point]
+        self.H_frobenius_dist_mean = self.H_frobenius_dist_mean_grid[self.best_grid_point]
+        return self
 
     ###########################################################################
     ############################# Old codes below #############################
