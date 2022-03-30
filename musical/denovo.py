@@ -2,7 +2,7 @@
 
 TODO:
 1. Universally work with pd dataframes in DenovoSig.
-2. We need better structuring of the class. E.g., use @ property to protect some attributes. 
+2. We need better structuring of the class. E.g., use @ property to protect some attributes.
 """
 
 import numpy as np
@@ -1022,6 +1022,10 @@ class DenovoSig:
             warnings.warn('W_catalog has different feature names. The feature names of W_catalog will be converted to self.features. Make sure that the features match.',
                           UserWarning)
             W_catalog.index = self.features
+        if thresh_match is None:
+            thresh_match = 0.01
+        if thresh_refit is None:
+            thresh_refit = 0.01
         self.W_catalog = W_catalog
         self.method_assign = method_assign
         self.thresh_match = thresh_match
@@ -1054,6 +1058,10 @@ class DenovoSig:
             warnings.warn('W_catalog has different feature names. The feature names of W_catalog will be converted to self.features. Make sure that the features match.',
                           UserWarning)
             W_catalog.index = self.features
+        if thresh_match_grid is None:
+            thresh_match_grid = np.array([0.01])
+        if thresh_refit_grid is None:
+            thresh_refit_grid = np.array([0.01])
         self.W_catalog = W_catalog
         self.method_assign = method_assign
         self.thresh_match_grid = thresh_match_grid
@@ -1067,7 +1075,7 @@ class DenovoSig:
             indices_associated_sigs=self.indices_associated_sigs,
             ncpu=self.ncpu, verbose=self.verbose
         )
-        self._assign_grid_is_run
+        self._assign_grid_is_run = True
         return self
 
 
