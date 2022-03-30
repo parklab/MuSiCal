@@ -1,4 +1,9 @@
-"""Main class for de-novo extraction of signatures"""
+"""Main class for de-novo extraction of signatures
+
+TODO:
+1. Universally work with pd dataframes in DenovoSig.
+2. We need better structuring of the class. E.g., use @ property to protect some attributes.
+"""
 
 import numpy as np
 import scipy as sp
@@ -18,12 +23,13 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.ticker as ticker
+import copy
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
-from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test
+from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test, simulate_count_matrix
 from .nnls import nnls
-from .refit import reassign
+from .refit import reassign, assign, assign_grid
 from .validate import validate
 from .cluster import OptimalK, hierarchical_cluster
 
@@ -531,21 +537,28 @@ class DenovoSig:
                  mvnmf_gamma=1.0,
                  mvnmf_pthresh=0.05,
                  mvnmf_noise=False,
+                 # Parameters below will be removed. These parameters will be put into corresponding functions.
                  # Refitting:
                  use_catalog=True,
                  catalog_name='COSMIC_v3p1_SBS_WGS',
                  thresh1_match = [0.010],
-                 thresh2_match = [0.010],
+                 thresh2_match = [None],
                  thresh_new_sig = [0.8],
                  method_sparse = 'likelihood_bidirectional',
                  thresh1 = [0.001],
-                 thresh2 = [None],
-                 features = None
+                 thresh2 = [None]
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
-            X = np.array(X).astype(float)
-        self.X = X
+            self.X = np.array(X).astype(float)
         self.n_features, self.n_samples = self.X.shape
+        if isinstance(X, pd.DataFrame):
+            self.X_df = X.astype(float)
+        else:
+            self.X_df = pd.DataFrame(self.X,
+                                     columns=['Sample' + str(i) for i in range(1, self.n_samples + 1)],
+                                     index=['Feature' + str(i) for i in range(1, self.n_features + 1)])
+        self.samples = self.X_df.columns.values
+        self.features = self.X_df.index.values
         if min_n_components is None:
             min_n_components = 1
         self.min_n_components = min_n_components
@@ -597,15 +610,14 @@ class DenovoSig:
         self.method_sparse = method_sparse
         self.thresh1 = thresh1
         self.thresh2 = thresh2
-        self.features = features
 
     def _job(self, parameters):
-        """parameters = (index_replicate, n_components, eng, lambda_tilde)
+        """parameters = (index_replicate, n_components, lambda_tilde)
 
         Note that this function must be defined outside of self.fit(), otherwise we'll receive
         'cannot pickle' errors.
         """
-        index_replicate, n_components, eng, lambda_tilde = parameters
+        index_replicate, n_components, lambda_tilde = parameters
         np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
         if self.method == 'nmf':
             if self.bootstrap:
@@ -623,7 +635,7 @@ class DenovoSig:
                         conv_test_freq=self.conv_test_freq,
                         conv_test_baseline=self.conv_test_baseline
                        )
-            model.fit(eng=eng)
+            model.fit()
             if self.verbose:
                 print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
             return model
@@ -650,7 +662,7 @@ class DenovoSig:
                                      ncpu=1,
                                      noise=self.mvnmf_noise
                                     )
-                model.fit(eng=eng)
+                model.fit()
                 if self.verbose:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                     print('Selected lambda_tilde = %.3g ' % model.lambda_tilde)
@@ -674,7 +686,7 @@ class DenovoSig:
                               delta=self.mvnmf_delta,
                               gamma=self.mvnmf_gamma
                              )
-                model.fit(eng=eng)
+                model.fit()
                 if self.verbose:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                 return model
@@ -697,12 +709,12 @@ class DenovoSig:
                               delta=self.mvnmf_delta,
                               gamma=self.mvnmf_gamma
                              )
-                model.fit(eng=eng)
+                model.fit()
                 if self.verbose:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                 return model
 
-    def _run_jobs(self, eng=None):
+    def _run_jobs(self):
         self.W_raw_all = {} # Save all raw results
         self.H_raw_all = {} # Save all raw results
         self._W_raw_all = {}
@@ -713,7 +725,7 @@ class DenovoSig:
             if self.verbose:
                 print('Extracting signatures for n_components = ' + str(n_components) + '..................')
             if self.method == 'nmf':
-                parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                parameters = [(index_replicate, n_components, None) for index_replicate in range(0, self.n_replicates)]
                 # Note that after workers are created, modifications of global variables won't be seen by the workers.
                 # Therefore, any modifications must be made before the workers are created.
                 # This is why we need to recreate workers for each n_components.
@@ -723,7 +735,7 @@ class DenovoSig:
                 workers.join()
             elif self.method == 'mvnmf':
                 if self.mvnmf_hyperparameter_method == 'all':
-                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                    parameters = [(index_replicate, n_components, None) for index_replicate in range(0, self.n_replicates)]
                     workers = multiprocessing.Pool(self.ncpu)
                     models = workers.map(self._job, parameters)
                     workers.close()
@@ -751,13 +763,13 @@ class DenovoSig:
                                          ncpu=self.ncpu,
                                          noise=self.mvnmf_noise
                                         )
-                    model.fit(eng=eng)
+                    model.fit()
                     models = [model]
                     lambda_tilde = model.lambda_tilde
                     if self.verbose:
                         print('Selected lambda_tilde = %.3g. This lambda_tilde will be used for all subsequent mvNMF runs.' % model.lambda_tilde)
                     # Run the rest of the models, using preselected hyperparameter
-                    parameters = [(index_replicate, n_components, eng, lambda_tilde) for index_replicate in range(1, self.n_replicates)]
+                    parameters = [(index_replicate, n_components, lambda_tilde) for index_replicate in range(1, self.n_replicates)]
                     workers = multiprocessing.Pool(self.ncpu)
                     _models = workers.map(self._job, parameters)
                     workers.close()
@@ -766,7 +778,7 @@ class DenovoSig:
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     if type(self.mvnmf_lambda_tilde_grid) is not float:
                         raise ValueError('When mvnmf_hyperparameter_method is set to fixed, a single float value must be provided for mvnmf_lambda_tilde_grid.')
-                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                    parameters = [(index_replicate, n_components, None) for index_replicate in range(0, self.n_replicates)]
                     workers = multiprocessing.Pool(self.ncpu)
                     models = workers.map(self._job, parameters)
                     workers.close()
@@ -862,14 +874,20 @@ class DenovoSig:
         self.reconstruction_error = self.reconstruction_error_all[self.n_components]
         self.samplewise_reconstruction_errors = self.samplewise_reconstruction_errors_all[self.n_components]
         self.n_support = self.n_support_all[self.n_components]
+        self.W_df = pd.DataFrame(self.W, columns=['Sig' + str(i) for i in range(1, self.n_components + 1)],
+                                 index=self.features)
+        self.signatures = self.W_df.columns.values
+        self.H_df = pd.DataFrame(self.H, columns=self.samples, index=self.signatures)
         return self
 
-    def fit(self, eng=None):
-        self._run_jobs(eng=eng)
+    def fit(self):
+        self._run_jobs()
         self.postprocess()
         return self
 
     def plot_selection(self, title=None, plot_pvalues=True, outfile=None, figsize=None):
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
         sns.set_style('ticks')
         ##### Collect data
         sil_score_mean = np.array([self.sil_score_mean_all[n_components] for n_components in self.n_components_all])
@@ -984,6 +1002,302 @@ class DenovoSig:
 
         if outfile is not None:
             plt.savefig(outfile, bbox_inches='tight')
+
+    def assign(self, W_catalog, method_assign='likelihood_bidirectional',
+               thresh_match=None, thresh_refit=None, thresh_new_sig=0.8, indices_associated_sigs=None):
+        # Check if fit has been run
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if hasattr(self, '_assign_is_run'):
+            warnings.warn('self.assign has been previously called. This call will replace the previous results.',
+                          UserWarning)
+        if hasattr(self, '_assign_grid_is_run'):
+            warnings.warn('self.assign_grid has been previously called. Therefore running self.assign may make some attributes inconsistent. Be careful.',
+                          UserWarning)
+        # Check input
+        if not isinstance(W_catalog, pd.DataFrame):
+            raise ValueError('W_catalog needs to be a pd.DataFrame.')
+        if self.n_features != W_catalog.shape[0]:
+            raise ValueError('W_catalog has the wrong number of features.')
+        if np.sum(self.features == W_catalog.index.values) != self.n_features:
+            warnings.warn('W_catalog has different feature names. The feature names of W_catalog will be converted to self.features. Make sure that the features match.',
+                          UserWarning)
+            W_catalog.index = self.features
+        if thresh_match is None:
+            thresh_match = 0.01
+        if thresh_refit is None:
+            thresh_refit = 0.01
+        self.W_catalog = W_catalog
+        self.method_assign = method_assign
+        self.thresh_match = thresh_match
+        self.thresh_refit = thresh_refit
+        self.thresh_new_sig = thresh_new_sig
+        self.indices_associated_sigs = indices_associated_sigs
+        self.W_s, self.H_s = assign(self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
+                                    thresh_match=self.thresh_match, thresh_refit=self.thresh_refit, thresh_new_sig=self.thresh_new_sig,
+                                    indices_associated_sigs=self.indices_associated_sigs)
+        self.sigs_assigned = self.H_s.index[self.H_s.sum(1) > 0].values
+        self.n_sigs_assigned = len(self.sigs_assigned)
+        self.W_s = pd.DataFrame.copy(self.W_s[self.sigs_assigned])
+        self.H_s = pd.DataFrame.copy(self.H_s.loc[self.sigs_assigned])
+        self._assign_is_run = True
+        return self
+
+    def assign_grid(self, W_catalog, method_assign='likelihood_bidirectional',
+                    thresh_match_grid=None, thresh_refit_grid=None, thresh_new_sig=0.8, indices_associated_sigs=None):
+        # Check if fit has been run
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if hasattr(self, '_assign_is_run'):
+            warnings.warn('self.assign has been previously called. Therefore running self.assign_grid may make some attributes inconsistent. Be careful.',
+                          UserWarning)
+        if hasattr(self, '_assign_grid_is_run'):
+            warnings.warn('self.assign_grid has been previously called. This call will replace the previous results.',
+                          UserWarning)
+        # Check input
+        if not isinstance(W_catalog, pd.DataFrame):
+            raise ValueError('W_catalog needs to be a pd.DataFrame.')
+        if self.n_features != W_catalog.shape[0]:
+            raise ValueError('W_catalog has the wrong number of features.')
+        if np.sum(self.features == W_catalog.index.values) != self.n_features:
+            warnings.warn('W_catalog has different feature names. The feature names of W_catalog will be converted to self.features. Make sure that the features match.',
+                          UserWarning)
+            W_catalog.index = self.features
+        if thresh_match_grid is None:
+            thresh_match_grid = np.array([0.01])
+        if thresh_refit_grid is None:
+            thresh_refit_grid = np.array([0.01])
+        self.W_catalog = W_catalog
+        self.method_assign = method_assign
+        self.thresh_match_grid = thresh_match_grid
+        self.thresh_refit_grid = thresh_refit_grid
+        self.thresh_new_sig = thresh_new_sig
+        self.indices_associated_sigs = indices_associated_sigs
+        W_s_grid_1d, H_s_grid, thresh_match_grid_unique = assign_grid(
+            self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
+            thresh_match_grid=self.thresh_match_grid, thresh_refit_grid=self.thresh_refit_grid,
+            thresh_new_sig=self.thresh_new_sig,
+            indices_associated_sigs=self.indices_associated_sigs,
+            ncpu=self.ncpu, verbose=self.verbose
+        )
+        self.W_s_grid = {}
+        self.H_s_grid = {}
+        self.sigs_assigned_grid = {}
+        self.n_sigs_assigned_grid = {}
+        for thresh_match in self.thresh_match_grid:
+            for thresh_refit in self.thresh_refit_grid:
+                sigs_assigned = H_s_grid[thresh_match][thresh_refit].index[H_s_grid[thresh_match][thresh_refit].sum(1) > 0].values
+                self.sigs_assigned_grid[(thresh_match, thresh_refit)] = sigs_assigned
+                self.W_s_grid[(thresh_match, thresh_refit)] = pd.DataFrame.copy(W_s_grid_1d[thresh_match][sigs_assigned])
+                self.H_s_grid[(thresh_match, thresh_refit)] = pd.DataFrame.copy(H_s_grid[thresh_match][thresh_refit].loc[sigs_assigned])
+                self.n_sigs_assigned_grid[(thresh_match, thresh_refit)] = len(sigs_assigned)
+        self.thresh_match_grid_unique = thresh_match_grid_unique
+        self._assign_grid_is_run = True
+        return self
+
+    def _reinstantiate(self, X_new):
+        """Simply instantiate a new unfitted object with the same parameters.
+
+        For copying the entire object, use copy.deepcopy().
+        """
+        model = DenovoSig(
+            X_new,
+            min_n_components=self.min_n_components,
+            max_n_components=self.max_n_components,
+            init=self.init,
+            method=self.method,
+            normalize_X=self.normalize_X,
+            bootstrap=self.bootstrap,
+            n_replicates=self.n_replicates,
+            max_iter=self.max_iter,
+            min_iter=self.min_iter,
+            conv_test_freq=self.conv_test_freq,
+            conv_test_baseline=self.conv_test_baseline,
+            tol=self.tol,
+            ncpu=self.ncpu,
+            verbose=self.verbose,
+            # Specific for result filtering:
+            filter=self.filter,
+            filter_method=self.filter_method,
+            filter_thresh=self.filter_thresh,
+            filter_percentile=self.filter_percentile,
+            # Specific for result gathering:
+            cluster_method=self.cluster_method,
+            # Specific for n_components selection:
+            select_method=self.select_method,
+            select_pthresh=self.select_pthresh,
+            select_sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+            select_sil_score_min_thresh=self.select_sil_score_min_thresh,
+            select_n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
+            # mvnmf specific:
+            mvnmf_hyperparameter_method=self.mvnmf_hyperparameter_method,
+            mvnmf_lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
+            mvnmf_delta=self.mvnmf_delta,
+            mvnmf_gamma=self.mvnmf_gamma,
+            mvnmf_pthresh=self.mvnmf_pthresh,
+            mvnmf_noise=self.mvnmf_noise
+        )
+        return model
+
+    def validate(self, W_s=None, H_s=None, validate_n_replicates=1):
+        """Validate a single assignment result.
+
+        If you want to validate an external assignment result, provide W_s and H_s.
+        """
+        ################# Check running status and input
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if W_s is not None and H_s is not None:
+            if hasattr(self, 'W_s') or hasattr(self, 'H_s'):
+                warnings.warn('Signature assignment W_s or H_s already present in the model. '
+                              'However, external W_s and H_s are provided. The external '
+                              'assignment will be validated and the original assignment will be lost. Be careful',
+                              UserWarning)
+            if not isinstance(W_s, pd.DataFrame):
+                raise ValueError('W_s needs to be a pd.DataFrame.')
+            if not isinstance(H_s, pd.DataFrame):
+                raise ValueError('H_s needs to be a pd.DataFrame.')
+            if W_s.index.tolist() != list(self.features):
+                raise ValueError('The index of W_s does not match model.features.')
+            if H_s.columns.tolist() != list(self.samples):
+                raise ValueError('The columns of H_s do not match model.samples.')
+            if H_s.index.tolist() != W_s.columns.tolist():
+                raise ValueError('The provided W_s and H_s do not have matched signatures.')
+            self.W_s = W_s
+            self.H_s = H_s
+        elif W_s is None and H_s is None:
+            if not hasattr(self, 'W_s') or not hasattr(self, 'H_s'):
+                raise ValueError('Signature assignment has not been done yet, and external assignment is not provided. '
+                                 'Run assign or validate_grid first. Or provide external assignment.')
+        else:
+            raise ValueError('Either provide both W_s and H_s, or set both to None.')
+        #####################
+        self.validate_n_replicates = validate_n_replicates
+        self.X_simul = []
+        self.W_simul = []
+        self.H_simul = []
+        self.W_cos_dist = []
+        self.H_frobenius_dist = []
+        ##################### Run validation
+        for i in range(0, self.validate_n_replicates):
+            # Simulate data
+            X_simul = pd.DataFrame(simulate_count_matrix(self.W_s.values, self.H_s.values),
+                                   columns=self.samples, index=self.features)
+            # Rerun de novo discovery
+            model_simul = self._reinstantiate(X_simul)
+            model_simul.min_n_components = self.n_components # Fix n_components
+            model_simul.max_n_components = self.n_components # Fix n_components
+            model_simul.n_components_all = np.array([self.n_components]) # Fix n_components.
+            # The line above is necessary because n_components_all is defined in __init__(), which is not a good thing to do.
+            # We should remove any calculation within __init__(). Then the above line will not be needed.
+            if self.method == 'mvnmf': # If mvnmf, fix lambda_tilde
+                model_simul.mvnmf_hyperparameter_method = 'fixed'
+                model_simul.mvnmf_lambda_tilde_grid = float(self.lambda_tilde_all[self.n_components][0])
+            model_simul.fit()
+            # Collect data
+            W_simul, col_index, pdist = match_catalog_pair(self.W, model_simul.W, metric='cosine')
+            H_simul = model_simul.H[col_index, :]
+            W_cos_dist = pdist[np.arange(0, self.n_components), col_index].mean()
+            H_frobenius_dist = beta_divergence(self.H, H_simul, beta=2, square_root=True)
+            self.X_simul.append(X_simul)
+            self.W_simul.append(pd.DataFrame(W_simul, columns=self.signatures, index=self.features))
+            self.H_simul.append(pd.DataFrame(H_simul, columns=self.samples, index=self.signatures))
+            self.W_cos_dist.append(W_cos_dist)
+            self.H_frobenius_dist.append(H_frobenius_dist)
+        self.W_cos_dist_mean = np.mean(self.W_cos_dist)
+        self.H_frobenius_dist_mean = np.mean(self.H_frobenius_dist)
+        return self
+
+    def validate_grid(self, validate_n_replicates=1, W_cos_dist_thresh=0.02):
+        """Validation on a grid.
+        """
+        ################# Check running status and input
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if not hasattr(self, '_assign_grid_is_run'):
+            raise ValueError('Run assign_grid first.')
+        ################# Run validation
+        self.validate_n_replicates = validate_n_replicates
+        self.W_cos_dist_thresh = W_cos_dist_thresh
+        self.X_simul_grid = {}
+        self.W_simul_grid = {}
+        self.H_simul_grid = {}
+        self.W_cos_dist_grid = {}
+        self.H_frobenius_dist_grid = {}
+        self.W_cos_dist_mean_grid = {}
+        self.H_frobenius_dist_mean_grid = {}
+        # Note that only unique thresh_match will be run.
+        for thresh_match in self.thresh_match_grid_unique:
+            for thresh_refit in self.thresh_refit_grid:
+                X_simul = []
+                W_simul = []
+                H_simul = []
+                W_cos_dist = []
+                H_frobenius_dist = []
+                for i in range(0, self.validate_n_replicates):
+                    # Simulate data
+                    _X_simul = pd.DataFrame(simulate_count_matrix(self.W_s_grid[(thresh_match, thresh_refit)].values, self.H_s_grid[(thresh_match, thresh_refit)].values),
+                                            columns=self.samples, index=self.features)
+                    # Rerun de novo discovery
+                    model_simul = self._reinstantiate(_X_simul)
+                    model_simul.min_n_components = self.n_components # Fix n_components
+                    model_simul.max_n_components = self.n_components # Fix n_components
+                    model_simul.n_components_all = np.array([self.n_components]) # Fix n_components.
+                    if self.method == 'mvnmf': # If mvnmf, fix lambda_tilde
+                        model_simul.mvnmf_hyperparameter_method = 'fixed'
+                        model_simul.mvnmf_lambda_tilde_grid = float(self.lambda_tilde_all[self.n_components][0])
+                    model_simul.fit()
+                    # Collect data
+                    _W_simul, col_index, pdist = match_catalog_pair(self.W, model_simul.W, metric='cosine')
+                    _H_simul = model_simul.H[col_index, :]
+                    _W_cos_dist = pdist[np.arange(0, self.n_components), col_index].mean()
+                    _H_frobenius_dist = beta_divergence(self.H, _H_simul, beta=2, square_root=True)
+                    X_simul.append(_X_simul)
+                    W_simul.append(pd.DataFrame(_W_simul, columns=self.signatures, index=self.features))
+                    H_simul.append(pd.DataFrame(_H_simul, columns=self.samples, index=self.signatures))
+                    W_cos_dist.append(_W_cos_dist)
+                    H_frobenius_dist.append(_H_frobenius_dist)
+                self.X_simul_grid[(thresh_match, thresh_refit)] = X_simul
+                self.W_simul_grid[(thresh_match, thresh_refit)] = W_simul
+                self.H_simul_grid[(thresh_match, thresh_refit)] = H_simul
+                self.W_cos_dist_grid[(thresh_match, thresh_refit)] = W_cos_dist
+                self.H_frobenius_dist_grid[(thresh_match, thresh_refit)] = H_frobenius_dist
+                self.W_cos_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(W_cos_dist)
+                self.H_frobenius_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(H_frobenius_dist)
+        ################# Select best result
+        # Smallest W_cos_dist
+        W_cos_dist_min = np.min(list(self.W_cos_dist_mean_grid.values()))
+        # Candidates: W_cos_dist within W_cos_dist_min + self.W_cos_dist_thresh
+        candidate_grid_points = [key for key, value in self.W_cos_dist_mean_grid.items() if value <= W_cos_dist_min + self.W_cos_dist_thresh]
+        if len(candidate_grid_points) == 1:
+            self.best_grid_point = candidate_grid_points[0]
+        else:
+            # Look at number of assigned sigs
+            n_sigs_assigned_min = np.min([self.n_sigs_assigned_grid[key] for key in candidate_grid_points])
+            candidate_grid_points = [key for key in candidate_grid_points if self.n_sigs_assigned_grid[key] == n_sigs_assigned_min]
+            if len(candidate_grid_points) == 1:
+                self.best_grid_point = candidate_grid_points[0]
+            else:
+                # Look at H error
+                # Or choose the one with the strongest sparsity here.
+                tmp = [[key, self.H_frobenius_dist_mean_grid[key]] for key in candidate_grid_points]
+                tmp = sorted(tmp, key=itemgetter(1))
+                self.best_grid_point = tmp[0][0]
+        self.thresh_match = self.best_grid_point[0]
+        self.thresh_refit = self.best_grid_point[1]
+        self.W_s = self.W_s_grid[self.best_grid_point]
+        self.H_s = self.H_s_grid[self.best_grid_point]
+        self.sigs_assigned = self.sigs_assigned_grid[self.best_grid_point]
+        self.n_sigs_assigned = self.n_sigs_assigned_grid[self.best_grid_point]
+        self.W_cos_dist = self.W_cos_dist_grid[self.best_grid_point]
+        self.W_cos_dist_mean = self.W_cos_dist_mean_grid[self.best_grid_point]
+        self.H_frobenius_dist = self.H_frobenius_dist_grid[self.best_grid_point]
+        self.H_frobenius_dist_mean = self.H_frobenius_dist_mean_grid[self.best_grid_point]
+        return self
+
+    ###########################################################################
+    ############################# Old codes below #############################
+    ###########################################################################
 
     def set_params(self,
                    use_catalog = None,
@@ -1126,26 +1440,24 @@ class DenovoSig:
         return self
 
     def validate_assignment(self, use_refit = False, clear_grid = False):
-        W_simul, H_simul, X_simul, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W, error_H, dist_W, dist_max, dist_sum, dist_max_sig_index, dist_max_all, dist_sum_all, dist_max_sig_index_all, W_simul_all, H_simul_all, _, _, _, _ = validate(self)
 
-        self.W_simul = W_simul
-        self.H_simul = H_simul
-        self.X_simul = X_simul
+        W_simul_all, H_simul_all, X_simul_all, best_grid_index, best_grid_index_sum, best_grid_indices, best_grid_indices_sum, error_W_all, error_H_all, dist_W_all, dist_max_sig_index_all,  dist_max_all, dist_sum_all = validate(self)
+
         self.W_simul_all = W_simul_all
         self.H_simul_all = H_simul_all
+        self.X_simul_all = X_simul_all
         self.best_grid_index = best_grid_index
         self.best_grid_index_sum = best_grid_index_sum
         self.best_grid_indices = best_grid_indices
         self.best_grid_indices_sum = best_grid_indices_sum
-        self.error_W_simul = error_W
-        self.error_H_simul = error_H
-        self.dist_W_simul = dist_W
-        self.dist_max_simul = dist_max
-        self.dist_sum_simul = dist_sum
-        self.dist_max_simul_sig_index = dist_max_sig_index
-        self.dist_max_simul_all = dist_max_all
+        self.error_W_all = error_W_all
+        self.error_H_all = error_H_all
+        self.dist_W_all = dist_W_all
+        self.dist_max_all = dist_max_all
+        self.dist_sum_all = dist_sum_all
         self.dist_max_simul_sig_index_all = dist_max_sig_index_all
 
+        # to use maximum distance only change best_grid_index_sum to best_grid_index
         if self.n_grid > 1:
             self.W_s = self.W_s_all[best_grid_index_sum]
             self.H_s = self.H_s_all[best_grid_index_sum]
@@ -1156,7 +1468,14 @@ class DenovoSig:
                             thresh1_match = [self.thresh1_match_all[best_grid_index_sum]],
                             thresh2_match = [self.thresh2_match_all[best_grid_index_sum]],
                             thresh_new_sig = [self.thresh_new_sig_all[best_grid_index_sum]])
-
+        self.W_simul = self.W_simul_all[best_grid_index_sum]
+        self.H_simul = self.H_simul_all[best_grid_index_sum]
+        self.X_simul = self.X_simul_all[best_grid_index_sum]
+        self.dist_W_simul = self.dist_W_all[best_grid_index_sum]
+        self.error_W_simul = self.error_W_all[best_grid_index_sum]
+        self.error_H_simul = self.error_H_all[best_grid_index_sum]
+        self.dist_max_simul = self.dist_max_all[best_grid_index_sum]
+        self.dist_sum_simul = self.dist_sum_all[best_grid_index_sum]
         if clear_grid:
             self.clear_grid()
         return self

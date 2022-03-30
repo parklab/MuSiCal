@@ -1,4 +1,10 @@
-"""Sparse nnls"""
+"""Sparse nnls
+
+TODO:
+1. Replace indices_associated_sigs by names of associated sigs.
+2. Make sure to double check H_reduced when associated sigs are forced. I.e.,
+after getting H_reduced, make sure that associated sigs are either all there or all not there.
+"""
 
 import numpy as np
 import pandas as pd
@@ -281,7 +287,7 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=No
     if i_iter >= max_iter:
         warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
                       UserWarning)
-    ### Final NNLS                                                               
+    ### Final NNLS
     if indices_associated_sigs != None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
@@ -404,7 +410,7 @@ def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True, indices
             else:
                 index_remove = indices_retained[np.argmin(loglikelihoods)]
                 indices_retained = np.array([i for i in indices_retained if i != index_remove])
-    ### Final NNLS                                                                                          
+    ### Final NNLS
     if indices_associated_sigs != None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
@@ -497,7 +503,7 @@ def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_fo
     if i_iter >= max_iter:
         warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
                       UserWarning)
-    ### Final NNLS                                                                            
+    ### Final NNLS
     if indices_associated_sigs != None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
@@ -525,7 +531,7 @@ class SparseNNLS:
         self.per_trial = per_trial
         self.N = N
         self.indices_associated_sigs = indices_associated_sigs
-        
+
     def fit(self, X, W):
         # Save original input data
         self.X_original = X
@@ -757,6 +763,8 @@ class SparseNNLSGrid:
             #self.models_grid = {}
             self.H_reduced_grid = {}
             self.W_reduced_grid = {}
+            self.H_grid = {}
+            self.cos_similarities_grid = {}
             for thresh1 in self.thresh1_grid:
                 for thresh2 in self.thresh2_grid:
                     model = SparseNNLS(method=self.method, thresh1=thresh1, thresh2=thresh2,
@@ -766,6 +774,8 @@ class SparseNNLSGrid:
                     #self.models_grid[(thresh1, thresh2)] = model
                     self.H_reduced_grid[(thresh1, thresh2)] = model.H_reduced
                     self.W_reduced_grid[(thresh1, thresh2)] = model.W_reduced
+                    self.H_grid[(thresh1, thresh2)] = model.H
+                    self.cos_similarities_grid[(thresh1, thresh2)] = model.cos_similarities
         else:
             parameters = []
             for thresh1 in self.thresh1_grid:
@@ -778,10 +788,14 @@ class SparseNNLSGrid:
             #self.models_grid = {}
             self.H_reduced_grid = {}
             self.W_reduced_grid = {}
+            self.H_grid = {}
+            self.cos_similarities_grid = {}
             for item in results:
                 #self.models_grid[item[0]] = item[1]
                 self.H_reduced_grid[item[0]] = item[1].H_reduced
                 self.W_reduced_grid[item[0]] = item[1].W_reduced
+                self.H_grid[item[0]] = item[1].H
+                self.cos_similarities_grid[item[0]] = item[1].cos_similarities
 
 
         return self
