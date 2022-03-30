@@ -23,6 +23,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.ticker as ticker
+import copy
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
@@ -1078,7 +1079,124 @@ class DenovoSig:
         self._assign_grid_is_run = True
         return self
 
+    def _reinstantiate(self, X_new):
+        """Simply instantiate a new unfitted object with the same parameters.
 
+        For copying the entire object, use copy.deepcopy().
+        """
+        model = DenovoSig(
+            X_new,
+            min_n_components=self.min_n_components,
+            max_n_components=self.max_n_components,
+            init=self.init,
+            method=self.method,
+            normalize_X=self.normalize_X,
+            bootstrap=self.bootstrap,
+            n_replicates=self.n_replicates,
+            max_iter=self.max_iter,
+            min_iter=self.min_iter,
+            conv_test_freq=self.conv_test_freq,
+            conv_test_baseline=self.conv_test_baseline,
+            tol=self.tol,
+            ncpu=self.ncpu,
+            verbose=self.verbose,
+            # Specific for result filtering:
+            filter=self.filter,
+            filter_method=self.filter_method,
+            filter_thresh=self.filter_thresh,
+            filter_percentile=self.filter_percentile,
+            # Specific for result gathering:
+            cluster_method=self.cluster_method,
+            # Specific for n_components selection:
+            select_method=self.select_method,
+            select_pthresh=self.select_pthresh,
+            select_sil_score_mean_thresh=self.select_sil_score_mean_thresh,
+            select_sil_score_min_thresh=self.select_sil_score_min_thresh,
+            select_n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
+            # mvnmf specific:
+            mvnmf_hyperparameter_method=self.mvnmf_hyperparameter_method,
+            mvnmf_lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
+            mvnmf_delta=self.mvnmf_delta,
+            mvnmf_gamma=self.mvnmf_gamma,
+            mvnmf_pthresh=self.mvnmf_pthresh,
+            mvnmf_noise=self.mvnmf_noise
+        )
+        return model
+
+    def validate(self, W_s=None, H_s=None, validate_n_replicates=1):
+        """Validate a single assignment result.
+
+        If you want to validate an external assignment result, provide W_s and H_s.
+        """
+        ################# Check running status and input
+        if not hasattr(self, 'W'):
+            raise ValueError('The model has not been fitted.')
+        if W_s is not None and H_s is not None:
+            if hasattr(self, 'W_s') or hasattr(self, 'H_s'):
+                warnings.warn('Signature assignment W_s or H_s already present in the model. '
+                              'However, external W_s and H_s are provided. The external '
+                              'assignment will be validated and the original assignment will be lost. Be careful',
+                              UserWarning)
+            if not isinstance(W_s, pd.DataFrame):
+                raise ValueError('W_s needs to be a pd.DataFrame.')
+            if not isinstance(H_s, pd.DataFrame):
+                raise ValueError('H_s needs to be a pd.DataFrame.')
+            if W_s.index.tolist() != list(self.features):
+                raise ValueError('The index of W_s does not match model.features.')
+            if H_s.columns.tolist() != list(self.samples):
+                raise ValueError('The columns of H_s do not match model.samples.')
+            if H_s.index.tolist() != W_s.columns.tolist():
+                raise ValueError('The provided W_s and H_s do not have matched signatures.')
+            self.W_s = W_s
+            self.H_s = H_s
+        elif W_s is None and H_s is None:
+            if not hasattr(self, 'W_s') or not hasattr(self, 'H_s'):
+                raise ValueError('Signature assignment has not been done yet, and external assignment is not provided. '
+                                 'Run assign or validate_grid first. Or provide external assignment.')
+        else:
+            raise ValueError('Either provide both W_s and H_s, or set both to None.')
+        #####################
+        self.validate_n_replicates = validate_n_replicates
+        self.X_simul = []
+        self.W_simul = []
+        self.H_simul = []
+        self.W_cos_dist = []
+        self.H_frobenius_dist = []
+        ##################### Run validation
+        for i in range(0, self.validate_n_replicates):
+            # Simulate data
+            X_simul = pd.DataFrame(simulate_count_matrix(self.W_s.values, self.H_s.values),
+                                   columns=self.samples, index=self.features)
+            # Rerun de novo discovery
+            model_simul = self._reinstantiate(X_simul)
+            model_simul.min_n_components = self.n_components # Fix n_components
+            model_simul.max_n_components = self.n_components # Fix n_components
+            model_simul.n_components_all = np.array([self.n_components]) # Fix n_components.
+            # The line above is necessary because n_components_all is defined in __init__(), which is not a good thing to do.
+            # We should remove any calculation within __init__(). Then the above line will not be needed.
+            if self.method == 'mvnmf': # If mvnmf, fix lambda_tilde
+                model_simul.mvnmf_hyperparameter_method = 'fixed'
+                model_simul.mvnmf_lambda_tilde_grid = float(self.lambda_tilde_all[self.n_components][0])
+            model_simul.fit()
+            # Collect data
+            W_simul, col_index, pdist = match_catalog_pair(self.W, model_simul.W, metric='cosine')
+            H_simul = model_simul.H[col_index, :]
+            W_cos_dist = pdist[np.arange(0, self.n_components), col_index].mean()
+            H_frobenius_dist = beta_divergence(self.H, H_simul, beta=2, square_root=True)
+            self.X_simul.append(X_simul)
+            self.W_simul.append(pd.DataFrame(W_simul, columns=self.signatures, index=self.features))
+            self.H_simul.append(pd.DataFrame(H_simul, columns=self.samples, index=self.signatures))
+            self.W_cos_dist.append(W_cos_dist)
+            self.H_frobenius_dist.append(H_frobenius_dist)
+        self.W_cos_dist_mean = np.mean(self.W_cos_dist)
+        self.H_frobenius_dist_mean = np.mean(self.H_frobenius_dist)
+        return self
+
+
+
+
+    def validate_grid(self):
+        pass
 
     ###########################################################################
     ############################# Old codes below #############################
