@@ -26,7 +26,7 @@ import matplotlib.ticker as ticker
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
-from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test
+from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test, simulate_count_matrix
 from .nnls import nnls
 from .refit import reassign, assign, assign_grid
 from .validate import validate
@@ -611,12 +611,12 @@ class DenovoSig:
         self.thresh2 = thresh2
 
     def _job(self, parameters):
-        """parameters = (index_replicate, n_components, eng, lambda_tilde)
+        """parameters = (index_replicate, n_components, lambda_tilde)
 
         Note that this function must be defined outside of self.fit(), otherwise we'll receive
         'cannot pickle' errors.
         """
-        index_replicate, n_components, eng, lambda_tilde = parameters
+        index_replicate, n_components, lambda_tilde = parameters
         np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
         if self.method == 'nmf':
             if self.bootstrap:
@@ -634,7 +634,7 @@ class DenovoSig:
                         conv_test_freq=self.conv_test_freq,
                         conv_test_baseline=self.conv_test_baseline
                        )
-            model.fit(eng=eng)
+            model.fit()
             if self.verbose:
                 print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
             return model
@@ -661,7 +661,7 @@ class DenovoSig:
                                      ncpu=1,
                                      noise=self.mvnmf_noise
                                     )
-                model.fit(eng=eng)
+                model.fit()
                 if self.verbose:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                     print('Selected lambda_tilde = %.3g ' % model.lambda_tilde)
@@ -685,7 +685,7 @@ class DenovoSig:
                               delta=self.mvnmf_delta,
                               gamma=self.mvnmf_gamma
                              )
-                model.fit(eng=eng)
+                model.fit()
                 if self.verbose:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                 return model
@@ -708,12 +708,12 @@ class DenovoSig:
                               delta=self.mvnmf_delta,
                               gamma=self.mvnmf_gamma
                              )
-                model.fit(eng=eng)
+                model.fit()
                 if self.verbose:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                 return model
 
-    def _run_jobs(self, eng=None):
+    def _run_jobs(self):
         self.W_raw_all = {} # Save all raw results
         self.H_raw_all = {} # Save all raw results
         self._W_raw_all = {}
@@ -724,7 +724,7 @@ class DenovoSig:
             if self.verbose:
                 print('Extracting signatures for n_components = ' + str(n_components) + '..................')
             if self.method == 'nmf':
-                parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                parameters = [(index_replicate, n_components, None) for index_replicate in range(0, self.n_replicates)]
                 # Note that after workers are created, modifications of global variables won't be seen by the workers.
                 # Therefore, any modifications must be made before the workers are created.
                 # This is why we need to recreate workers for each n_components.
@@ -734,7 +734,7 @@ class DenovoSig:
                 workers.join()
             elif self.method == 'mvnmf':
                 if self.mvnmf_hyperparameter_method == 'all':
-                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                    parameters = [(index_replicate, n_components, None) for index_replicate in range(0, self.n_replicates)]
                     workers = multiprocessing.Pool(self.ncpu)
                     models = workers.map(self._job, parameters)
                     workers.close()
@@ -762,13 +762,13 @@ class DenovoSig:
                                          ncpu=self.ncpu,
                                          noise=self.mvnmf_noise
                                         )
-                    model.fit(eng=eng)
+                    model.fit()
                     models = [model]
                     lambda_tilde = model.lambda_tilde
                     if self.verbose:
                         print('Selected lambda_tilde = %.3g. This lambda_tilde will be used for all subsequent mvNMF runs.' % model.lambda_tilde)
                     # Run the rest of the models, using preselected hyperparameter
-                    parameters = [(index_replicate, n_components, eng, lambda_tilde) for index_replicate in range(1, self.n_replicates)]
+                    parameters = [(index_replicate, n_components, lambda_tilde) for index_replicate in range(1, self.n_replicates)]
                     workers = multiprocessing.Pool(self.ncpu)
                     _models = workers.map(self._job, parameters)
                     workers.close()
@@ -777,7 +777,7 @@ class DenovoSig:
                 elif self.mvnmf_hyperparameter_method == 'fixed':
                     if type(self.mvnmf_lambda_tilde_grid) is not float:
                         raise ValueError('When mvnmf_hyperparameter_method is set to fixed, a single float value must be provided for mvnmf_lambda_tilde_grid.')
-                    parameters = [(index_replicate, n_components, eng, None) for index_replicate in range(0, self.n_replicates)]
+                    parameters = [(index_replicate, n_components, None) for index_replicate in range(0, self.n_replicates)]
                     workers = multiprocessing.Pool(self.ncpu)
                     models = workers.map(self._job, parameters)
                     workers.close()
@@ -879,8 +879,8 @@ class DenovoSig:
         self.H_df = pd.DataFrame(self.H, columns=self.samples, index=self.signatures)
         return self
 
-    def fit(self, eng=None):
-        self._run_jobs(eng=eng)
+    def fit(self):
+        self._run_jobs()
         self.postprocess()
         return self
 
@@ -1077,6 +1077,7 @@ class DenovoSig:
         )
         self._assign_grid_is_run = True
         return self
+
 
 
     ###########################################################################
