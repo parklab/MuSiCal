@@ -1214,7 +1214,7 @@ class DenovoSig:
 
         W_selection_method: 'pvalue' or 'cosine'
         TODO:
-        1. Separate running the simulation and selecting the best grid point. So that we can redo selection without rerunning simulation. 
+        1. Separate running the simulation and selecting the best grid point. So that we can redo selection without rerunning simulation.
         """
         ################# Check running status and input
         if not hasattr(self, 'W'):
@@ -1285,7 +1285,8 @@ class DenovoSig:
             for key, value in self.W_simul_grid.items():
                 W_simul = np.mean(value, 0) # We take the average signatures of multiple replicates of simulation results here.
                 error = np.absolute((self.W - W_simul).flatten())
-                elementwise_errors_W.append([key, np.mean(error), error])
+                #elementwise_errors_W.append([key, np.mean(error), error])
+                elementwise_errors_W.append([key, self.W_cos_dist_mean_grid[key], error]) # We can decide how to identify the 'best' one.
             # Best result
             elementwise_errors_W = sorted(elementwise_errors_W, key=itemgetter(1))
             error_best = elementwise_errors_W[0][2]
