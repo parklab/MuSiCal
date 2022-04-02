@@ -1296,7 +1296,7 @@ class DenovoSig:
             candidate_grid_points = []
             for key, _, error in elementwise_errors_W:
                 pvalue = stats.mannwhitneyu(error_best, error, alternative='less')[1]
-                pvalue_tail = differential_tail_test(error_best, error, percentile=90, alternative='less')[1]
+                pvalue_tail = differential_tail_test(error_best, error, percentile=95, alternative='less')[1]
                 self.W_simul_error_pvalue_grid[key] = pvalue
                 self.W_simul_error_pvalue_tail_grid[key] = pvalue_tail
                 if pvalue > self.W_pvalue_thresh and pvalue_tail > self.W_pvalue_thresh:
