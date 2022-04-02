@@ -1209,15 +1209,23 @@ class DenovoSig:
         self.H_frobenius_dist_mean = np.mean(self.H_frobenius_dist)
         return self
 
-    def validate_grid(self, validate_n_replicates=1, W_cos_dist_thresh=0.02):
+    def validate_grid(self, validate_n_replicates=1, W_selection_method='pvalue', W_cos_dist_thresh=0.02, W_pvalue_thresh=0.05):
         """Validation on a grid.
+
+        W_selection_method: 'pvalue' or 'cosine'
+        TODO:
+        1. Separate running the simulation and selecting the best grid point. So that we can redo selection without rerunning simulation. 
         """
         ################# Check running status and input
         if not hasattr(self, 'W'):
             raise ValueError('The model has not been fitted.')
         if not hasattr(self, '_assign_grid_is_run'):
             raise ValueError('Run assign_grid first.')
+        if W_selection_method not in ['pvalue', 'cosine']:
+            raise ValueError('Bad input for W_selection_method.')
         ################# Run validation
+        self.W_selection_method = W_selection_method
+        self.W_pvalue_thresh = W_pvalue_thresh
         self.validate_n_replicates = validate_n_replicates
         self.W_cos_dist_thresh = W_cos_dist_thresh
         self.X_simul_grid = {}
@@ -1266,10 +1274,33 @@ class DenovoSig:
                 self.W_cos_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(W_cos_dist)
                 self.H_frobenius_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(H_frobenius_dist)
         ################# Select best result
-        # Smallest W_cos_dist
-        W_cos_dist_min = np.min(list(self.W_cos_dist_mean_grid.values()))
-        # Candidates: W_cos_dist within W_cos_dist_min + self.W_cos_dist_thresh
-        candidate_grid_points = [key for key, value in self.W_cos_dist_mean_grid.items() if value <= W_cos_dist_min + self.W_cos_dist_thresh]
+        if self.W_selection_method == 'cosine':
+            # Smallest W_cos_dist
+            W_cos_dist_min = np.min(list(self.W_cos_dist_mean_grid.values()))
+            # Candidates: W_cos_dist within W_cos_dist_min + self.W_cos_dist_thresh
+            candidate_grid_points = [key for key, value in self.W_cos_dist_mean_grid.items() if value <= W_cos_dist_min + self.W_cos_dist_thresh]
+        elif self.W_selection_method == 'pvalue':
+            # Element wise errors between W_simul and W_data
+            elementwise_errors_W = []
+            for key, value in self.W_simul_grid.items():
+                W_simul = np.mean(value, 0) # We take the average signatures of multiple replicates of simulation results here.
+                error = np.absolute((self.W - W_simul).flatten())
+                elementwise_errors_W.append([key, np.mean(error), error])
+            # Best result
+            elementwise_errors_W = sorted(elementwise_errors_W, key=itemgetter(1))
+            error_best = elementwise_errors_W[0][2]
+            # Test differences
+            self.W_simul_error_pvalue_grid = {}
+            self.W_simul_error_pvalue_tail_grid = {}
+            candidate_grid_points = []
+            for key, _, error in elementwise_errors_W:
+                pvalue = stats.mannwhitneyu(error_best, error, alternative='less')[1]
+                pvalue_tail = differential_tail_test(error_best, error, percentile=90, alternative='less')[1]
+                self.W_simul_error_pvalue_grid[key] = pvalue
+                self.W_simul_error_pvalue_tail_grid[key] = pvalue_tail
+                if pvalue > self.W_pvalue_thresh and pvalue_tail > self.W_pvalue_thresh:
+                    candidate_grid_points.append(key)
+        ########
         if len(candidate_grid_points) == 1:
             self.best_grid_point = candidate_grid_points[0]
         else:
