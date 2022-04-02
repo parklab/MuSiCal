@@ -80,6 +80,25 @@ def _get_W_s(W, W_catalog, H_reduced, cos_similarities, thresh_new_sig):
         sig_map = H_reduced
     return W_s, sig_map
 
+def _clear_W_s(W, W_s, sig_map, min_sum_0p01 = 0.15, min_sig_contrib_ratio = 0.25):
+    for i in range(sig_map.shape[1]):
+        set_to_zero = False
+        for j in range(sig_map.shape[0]):
+            fij = sig_map.iat[j,i]
+            if fij < 1 and fij != 0:
+                contrib = np.dot(W_s[sig_map.index[j]], fij)
+                sum_above_0p01 = np.sum(contrib[contrib > 0.01])
+                max_sig_contrib_ratio = max(contrib)/max(W[sig_map.columns[i]])
+                if sum_above_0p01 < min_sum_0p01 and max_sig_contrib_ratio < min_sig_contrib_ratio:
+                    set_to_zero = True
+                    sig_map.iat[j,i] = 0
+        if set_to_zero:
+            weights, _ = sp.optimize.nnls(np.array(W_s.loc[:,sig_map.index[sig_map.loc[:, sig_map.columns[i]] > 0 ]]), np.array(W.loc[:,sig_map.columns[i]]))
+            sig_map.loc[sig_map.loc[:, sig_map.columns[i]] > 0, sig_map.columns[i]] = weights
+    sig_map = sig_map[sig_map.sum(1) > 0]
+    W_s = W_s[sig_map.index]
+    return W_s, sig_map
+    
 def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
           indices_associated_sigs=None):
     """Wrapper around SparseNNLS for matching
@@ -105,6 +124,7 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
     model.fit(W, W_catalog)
     # Identify new signatures not in the catalog.
     W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced, model.cos_similarities, thresh_new_sig)
+    W_s, sig_map = _clear_W_s(W, W_s, sig_map)
     return W_s, sig_map, model
 
 def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
@@ -136,6 +156,7 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
     for thresh in thresh_grid:
         key = (thresh, thresh2)
         W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced_grid[key], model.cos_similarities_grid[key], thresh_new_sig)
+        W_s, sig_map = _clear_W_s(W, W_s, sig_map)
         W_s_grid[thresh] = W_s
         sig_map_grid[thresh] = sig_map
     return W_s_grid, sig_map_grid, model
