@@ -1273,17 +1273,31 @@ class DenovoSig:
         if len(candidate_grid_points) == 1:
             self.best_grid_point = candidate_grid_points[0]
         else:
-            # Look at number of assigned sigs
-            n_sigs_assigned_min = np.min([self.n_sigs_assigned_grid[key] for key in candidate_grid_points])
-            candidate_grid_points = [key for key in candidate_grid_points if self.n_sigs_assigned_grid[key] == n_sigs_assigned_min]
+            # Avoid using new signatures
+            # Select those solutions where sigs_assigned does not contain any de novo signatures.
+            _candidate_grid_points = [key for key in candidate_grid_points if len(set(self.sigs_assigned_grid[key]).intersection(self.signatures)) == 0]
+            if len(_candidate_grid_points) == 0:
+                warnings.warn('During grid search, all reasonable solutions contain new signatures. This could potentially mean that '
+                              'a new signature does exist. Or, try increasing W_cos_dist_thresh or decreasing thresh_new_sig.',
+                              UserWarning)
+                # Keep candidate_grid_points unchanged
+            else:
+                candidate_grid_points = _candidate_grid_points
+            ###
             if len(candidate_grid_points) == 1:
                 self.best_grid_point = candidate_grid_points[0]
             else:
-                # Look at H error
-                # Or choose the one with the strongest sparsity here.
-                tmp = [[key, self.H_frobenius_dist_mean_grid[key]] for key in candidate_grid_points]
-                tmp = sorted(tmp, key=itemgetter(1))
-                self.best_grid_point = tmp[0][0]
+                # Look at number of assigned sigs
+                n_sigs_assigned_min = np.min([self.n_sigs_assigned_grid[key] for key in candidate_grid_points])
+                candidate_grid_points = [key for key in candidate_grid_points if self.n_sigs_assigned_grid[key] == n_sigs_assigned_min]
+                if len(candidate_grid_points) == 1:
+                    self.best_grid_point = candidate_grid_points[0]
+                else:
+                    # Look at H error
+                    # Or choose the one with the strongest sparsity here.
+                    tmp = [[key, self.H_frobenius_dist_mean_grid[key]] for key in candidate_grid_points]
+                    tmp = sorted(tmp, key=itemgetter(1))
+                    self.best_grid_point = tmp[0][0]
         self.thresh_match = self.best_grid_point[0]
         self.thresh_refit = self.best_grid_point[1]
         self.W_s = self.W_s_grid[self.best_grid_point]
