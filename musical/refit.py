@@ -70,17 +70,11 @@ def _get_W_s(W, W_catalog, H_reduced, cos_similarities, thresh_new_sig):
         #W_s.columns = ['Sig_N' + str(i) for i in range(1, len(inds_new_sig) + 1)]
         H_tmp = H_reduced.iloc[:, inds_not_new_sig]
         W_s = pd.concat([W_s, W_catalog[H_tmp.index[H_tmp.sum(1) > 0]]], axis=1)
-        H_reduced_s = pd.DataFrame(np.diag(np.repeat(1,len(inds_new_sig))), columns = W.columns[inds_new_sig], index = W.columns[inds_new_sig])
-        H_reduced_s = pd.concat([pd.DataFrame(H_reduced_s), pd.DataFrame(np.zeros((len(inds_new_sig), len(inds_not_new_sig))), columns = W.columns[inds_not_new_sig].tolist(), index = W.columns[inds_new_sig].tolist())], axis = 1)
-        H_tmp = H_tmp[H_tmp.sum(1) > 0]
-        H_reduced_s = pd.concat([H_reduced_s, pd.concat([pd.DataFrame(np.zeros((H_tmp.shape[0], len(inds_new_sig))), columns = W.columns[inds_new_sig].tolist(), index = H_tmp.index.tolist()), H_tmp], axis = 1)], axis = 0)
     elif len(inds_new_sig) > 0 and len(inds_not_new_sig) == 0:
         W_s = pd.DataFrame.copy(W.iloc[:, inds_new_sig])
-        H_reduced_s = pd.DataFrame(np.diag(np.repeat(1, 3)), columns = W_columns, index = W.columns)
     elif len(inds_new_sig) == 0 and len(inds_not_new_sig) > 0:
         W_s = pd.DataFrame.copy(W_catalog[H_reduced.index])
-        H_reduced_s = H_reduced
-    return W_s, H_reduced_s
+    return W_s
 
 def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
           indices_associated_sigs=None):
@@ -106,8 +100,8 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
     model = SparseNNLS(method=method, thresh1=thresh, indices_associated_sigs=indices_associated_sigs)
     model.fit(W, W_catalog)
     # Identify new signatures not in the catalog.
-    W_s,H_reduced_s = _get_W_s(W, W_catalog, model.H_reduced, model.cos_similarities, thresh_new_sig)
-    return W_s, model, H_reduced_s
+    W_s = _get_W_s(W, W_catalog, model.H_reduced, model.cos_similarities, thresh_new_sig)
+    return W_s, model
 
 def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
                indices_associated_sigs=None):
@@ -136,7 +130,7 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
     W_s_grid = {}
     for thresh in thresh_grid:
         key = (thresh, thresh2)
-        W_s,_ = _get_W_s(W, W_catalog, model.H_reduced_grid[key], model.cos_similarities_grid[key], thresh_new_sig)
+        W_s = _get_W_s(W, W_catalog, model.H_reduced_grid[key], model.cos_similarities_grid[key], thresh_new_sig)
         W_s_grid[thresh] = W_s
     return W_s_grid, model
 
