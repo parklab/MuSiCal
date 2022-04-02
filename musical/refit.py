@@ -68,13 +68,17 @@ def _get_W_s(W, W_catalog, H_reduced, cos_similarities, thresh_new_sig):
         W_s = pd.DataFrame.copy(W.iloc[:, inds_new_sig])
         # Let's not rename these new signatures and keep their original name in W, so that we can distinguish them.
         #W_s.columns = ['Sig_N' + str(i) for i in range(1, len(inds_new_sig) + 1)]
+        sig_map = pd.DataFrame(np.identity(len(inds_new_sig)), columns=W_s.columns, index=W_s.columns)
         H_tmp = H_reduced.iloc[:, inds_not_new_sig]
         W_s = pd.concat([W_s, W_catalog[H_tmp.index[H_tmp.sum(1) > 0]]], axis=1)
+        sig_map = pd.concat([sig_map, H_tmp.loc[H_tmp.index[H_tmp.sum(1) > 0]]]).fillna(0.0)
     elif len(inds_new_sig) > 0 and len(inds_not_new_sig) == 0:
         W_s = pd.DataFrame.copy(W.iloc[:, inds_new_sig])
+        sig_map = pd.DataFrame(np.identity(len(inds_new_sig)), columns=W_s.columns, index=W_s.columns)
     elif len(inds_new_sig) == 0 and len(inds_not_new_sig) > 0:
         W_s = pd.DataFrame.copy(W_catalog[H_reduced.index])
-    return W_s
+        sig_map = H_reduced
+    return W_s, sig_map
 
 def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
           indices_associated_sigs=None):
@@ -100,8 +104,8 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
     model = SparseNNLS(method=method, thresh1=thresh, indices_associated_sigs=indices_associated_sigs)
     model.fit(W, W_catalog)
     # Identify new signatures not in the catalog.
-    W_s = _get_W_s(W, W_catalog, model.H_reduced, model.cos_similarities, thresh_new_sig)
-    return W_s, model
+    W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced, model.cos_similarities, thresh_new_sig)
+    return W_s, sig_map, model
 
 def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
                indices_associated_sigs=None):
@@ -128,11 +132,13 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
     else:
         raise ValueError('thresh2 is modified unexpectedly.')
     W_s_grid = {}
+    sig_map_grid = {}
     for thresh in thresh_grid:
         key = (thresh, thresh2)
-        W_s = _get_W_s(W, W_catalog, model.H_reduced_grid[key], model.cos_similarities_grid[key], thresh_new_sig)
+        W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced_grid[key], model.cos_similarities_grid[key], thresh_new_sig)
         W_s_grid[thresh] = W_s
-    return W_s_grid, model
+        sig_map_grid[thresh] = sig_map
+    return W_s_grid, sig_map_grid, model
 
 def assign(X, W, W_catalog,
            method='likelihood_bidirectional',
@@ -146,9 +152,9 @@ def assign(X, W, W_catalog,
     Match and refit can have different thresholds. But only one threshold is allowed for each.
     If you want to skip matching, set thresh_new_sig to a value > 1.
     """
-    W_s, _ = match(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method, thresh=thresh_match, indices_associated_sigs=indices_associated_sigs)
+    W_s, sig_map, _ = match(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method, thresh=thresh_match, indices_associated_sigs=indices_associated_sigs)
     H_s, _ = refit(X, W_s, method=method, thresh=thresh_refit, indices_associated_sigs=indices_associated_sigs)
-    return W_s, H_s
+    return W_s, H_s, sig_map
 
 def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
                 thresh_match_grid=None, thresh_refit_grid=None,
@@ -160,9 +166,9 @@ def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
     if thresh_refit_grid is None:
         thresh_refit_grid = np.array([0.001])
     # First, matching on a grid
-    W_s_grid_1d, _ = match_grid(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method,
-                                thresh_grid=thresh_match_grid, ncpu=ncpu, verbose=verbose,
-                                indices_associated_sigs=indices_associated_sigs)
+    W_s_grid_1d, sig_map_grid_1d, _ = match_grid(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method,
+                                                 thresh_grid=thresh_match_grid, ncpu=ncpu, verbose=verbose,
+                                                 indices_associated_sigs=indices_associated_sigs)
     # Second, refitting on a grid.
     # When a matching result is already calculated before, do not do refitting again.
     H_s_grid = {}
@@ -179,7 +185,7 @@ def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
             H_s_grid[thresh_match] = H_s_grid_1d
             calculated_matching_results[sigs] = thresh_match
             thresh_match_grid_unique.append(thresh_match)
-    return W_s_grid_1d, H_s_grid, np.array(thresh_match_grid_unique)
+    return W_s_grid_1d, H_s_grid, sig_map_grid_1d, np.array(thresh_match_grid_unique)
 
 
 
