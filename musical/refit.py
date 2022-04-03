@@ -11,6 +11,8 @@ nnls_sparse.py, where we replace indices_associated_sigs by names of associated 
 import numpy as np
 import scipy as sp
 import pandas as pd
+import warnings
+
 from .nnls import nnls
 from .nnls_sparse import SparseNNLS, SparseNNLSGrid
 from .utils import match_signature_to_catalog_nnls_sparse, beta_divergence, get_sig_indices_associated, SIGS_ASSOCIATED_DICT, SIGS_ASSOCIATED
@@ -18,11 +20,13 @@ from .catalog import load_catalog
 
 
 def refit(X, W, method='likelihood_bidirectional', thresh=None,
-          indices_associated_sigs=None):
+          connected_sigs=False):
     """Wrapper around SparseNNLS for refitting
 
     Note that only one parameter thresh1 is allowed here.
     Both X and W should be pd.DataFrame.
+    If connected_sigs is set to True, we'll not fill in missing connected sigs, although a warning will be printed.
+    So make sure W contains all connected signatures if connected_sigs is set to True.
     """
     # Check input
     if X.shape[0] != W.shape[0]:
@@ -30,12 +34,29 @@ def refit(X, W, method='likelihood_bidirectional', thresh=None,
     if (X.index == W.index).sum() != X.shape[0]:
         raise ValueError('X and W have different indices.')
     # SparseNNLS
+    if connected_sigs:
+        indices_associated_sigs, _ = get_sig_indices_associated(W.columns.values)
+        # Give some informative warnings
+        missing_sigs = []
+        W_sigs = W.columns.values
+        for key in W_sigs:
+            if key in SIGS_ASSOCIATED_DICT.keys():
+                for sig in SIGS_ASSOCIATED_DICT[key]:
+                    if sig not in W_s_sigs:
+                        missing_sigs.append(sig)
+        if len(missing_sigs) > 0:
+            warnings.warn(('In refit: connected_sigs is set to True. The input W contains signatures with connected signatures. ' +
+                           'However, W is missing some connected signatures. Specifically, W is missing: ' +
+                           ','.join(missing_sigs) + '. Please fill in these missing sigs in W or make sure this is indeed what is wanted.'),
+                          UserWarning)
+    else:
+        indices_associated_sigs = None
     model = SparseNNLS(method=method, thresh1=thresh, indices_associated_sigs=indices_associated_sigs)
     model.fit(X, W)
     return model.H, model
 
 def refit_grid(X, W, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
-               indices_associated_sigs=None):
+               connected_sigs=False):
     """Refitting on a grid of thresholds.
     """
     # Check input
@@ -46,6 +67,24 @@ def refit_grid(X, W, method='likelihood_bidirectional', thresh_grid=None, ncpu=1
     # SparseNNLSGrid
     if thresh_grid is None:
         thresh_grid = np.array([0.001])
+    # connected_sigs
+    if connected_sigs:
+        indices_associated_sigs, _ = get_sig_indices_associated(W.columns.values)
+        # Give some informative warnings
+        missing_sigs = []
+        W_sigs = W.columns.values
+        for key in W_sigs:
+            if key in SIGS_ASSOCIATED_DICT.keys():
+                for sig in SIGS_ASSOCIATED_DICT[key]:
+                    if sig not in W_s_sigs:
+                        missing_sigs.append(sig)
+        if len(missing_sigs) > 0:
+            warnings.warn(('In refit: connected_sigs is set to True. The input W contains signatures with connected signatures. ' +
+                           'However, W is missing some connected signatures. Specifically, W is missing: ' +
+                           ','.join(missing_sigs) + '. Please fill in these missing sigs in W or make sure this is indeed what is wanted.'),
+                          UserWarning)
+    else:
+        indices_associated_sigs = None
     model = SparseNNLSGrid(method=method, thresh1_grid=thresh_grid, ncpu=ncpu, verbose=verbose, indices_associated_sigs=indices_associated_sigs)
     model.fit(X, W)
     # Results
@@ -184,20 +223,20 @@ def assign(X, W, W_catalog,
            thresh_match=None,
            thresh_refit=None,
            thresh_new_sig=0.8,
-           indices_associated_sigs=None):
+           connected_sigs=False):
     """Assign = match + refit.
 
     The same method will be used for both match and refit.
     Match and refit can have different thresholds. But only one threshold is allowed for each.
     If you want to skip matching, set thresh_new_sig to a value > 1.
     """
-    W_s, sig_map, _ = match(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method, thresh=thresh_match, indices_associated_sigs=indices_associated_sigs)
-    H_s, _ = refit(X, W_s, method=method, thresh=thresh_refit, indices_associated_sigs=indices_associated_sigs)
+    W_s, sig_map, _ = match(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method, thresh=thresh_match, connected_sigs=connected_sigs)
+    H_s, _ = refit(X, W_s, method=method, thresh=thresh_refit, connected_sigs=connected_sigs)
     return W_s, H_s, sig_map
 
 def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
                 thresh_match_grid=None, thresh_refit_grid=None,
-                thresh_new_sig=0.8, indices_associated_sigs=None,
+                thresh_new_sig=0.8, connected_sigs=False,
                 ncpu=1, verbose=0):
     """Match and refit on a grid"""
     if thresh_match_grid is None:
@@ -207,7 +246,7 @@ def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
     # First, matching on a grid
     W_s_grid_1d, sig_map_grid_1d, _ = match_grid(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method,
                                                  thresh_grid=thresh_match_grid, ncpu=ncpu, verbose=verbose,
-                                                 indices_associated_sigs=indices_associated_sigs)
+                                                 connected_sigs=connected_sigs)
     # Second, refitting on a grid.
     # When a matching result is already calculated before, do not do refitting again.
     H_s_grid = {}
@@ -220,7 +259,7 @@ def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
         else:
             H_s_grid_1d, _ = refit_grid(X, W_s_grid_1d[thresh_match],
                                         method=method, thresh_grid=thresh_refit_grid, ncpu=ncpu, verbose=verbose,
-                                        indices_associated_sigs=indices_associated_sigs)
+                                        connected_sigs=connected_sigs)
             H_s_grid[thresh_match] = H_s_grid_1d
             calculated_matching_results[sigs] = thresh_match
             thresh_match_grid_unique.append(thresh_match)
