@@ -35,7 +35,7 @@ def refit(X, W, method='likelihood_bidirectional', thresh=None,
         raise ValueError('X and W have different indices.')
     # SparseNNLS
     if connected_sigs:
-        indices_associated_sigs, _ = get_sig_indices_associated(W.columns.values)
+        indices_associated_sigs, _ = get_sig_indices_associated(W.columns.values, W.columns.values)
         # Give some informative warnings
         missing_sigs = []
         W_sigs = W.columns.values
@@ -69,7 +69,7 @@ def refit_grid(X, W, method='likelihood_bidirectional', thresh_grid=None, ncpu=1
         thresh_grid = np.array([0.001])
     # connected_sigs
     if connected_sigs:
-        indices_associated_sigs, _ = get_sig_indices_associated(W.columns.values)
+        indices_associated_sigs, _ = get_sig_indices_associated(W.columns.values, W.columns.values)
         # Give some informative warnings
         missing_sigs = []
         W_sigs = W.columns.values
