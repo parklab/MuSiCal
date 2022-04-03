@@ -13,7 +13,7 @@ import scipy as sp
 import pandas as pd
 from .nnls import nnls
 from .nnls_sparse import SparseNNLS, SparseNNLSGrid
-from .utils import match_signature_to_catalog_nnls_sparse, beta_divergence, get_sig_indices_associated
+from .utils import match_signature_to_catalog_nnls_sparse, beta_divergence, get_sig_indices_associated, SIGS_ASSOCIATED_DICT, SIGS_ASSOCIATED
 from .catalog import load_catalog
 
 
@@ -99,8 +99,20 @@ def _clear_W_s(W, W_s, sig_map, min_sum_0p01 = 0.15, min_sig_contrib_ratio = 0.2
     W_s = W_s[sig_map.index]
     return W_s, sig_map
 
+def _add_missing_connected_sigs(W_s, W_catalog):
+    missing_sigs = []
+    W_s_sigs = W_s.columns.values
+    W_catalog_sigs = W_catalog.columns.values
+    for key in W_s_sigs:
+        if key in SIGS_ASSOCIATED_DICT.keys():
+            for sig in SIGS_ASSOCIATED_DICT[key]:
+                if sig not in W_s_sigs and sig in W_catalog_sigs:
+                    missing_sigs.append(sig)
+    W_s = pd.concat([W_s, W_catalog[missing_sigs]], axis=1)
+    return W_s
+
 def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
-          indices_associated_sigs=None):
+          connected_sigs=False):
     """Wrapper around SparseNNLS for matching
 
     Note that only one parameter thresh1 is allowed here.
@@ -120,15 +132,18 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
     if len(set(W.columns).intersection(W_catalog.columns)) > 0:
         raise ValueError('W and W_catalog cannot contain signatures with the same name.')
     # SparseNNLS
-    model = SparseNNLS(method=method, thresh1=thresh, indices_associated_sigs=indices_associated_sigs)
+    model = SparseNNLS(method=method, thresh1=thresh, indices_associated_sigs=None)
     model.fit(W, W_catalog)
     # Identify new signatures not in the catalog.
     W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced, model.cos_similarities, thresh_new_sig)
     W_s, sig_map = _clear_W_s(W, W_s, sig_map)
+    # If connected_sigs, we add missing connected signatures to W_s
+    if connected_sigs:
+        W_s = _add_missing_connected_sigs(W_s, W_catalog)
     return W_s, sig_map, model
 
 def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
-               indices_associated_sigs=None):
+               connected_sigs=False):
     """Matching on a grid of thresholds.
     """
     # Check input
@@ -141,7 +156,7 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
     # SparseNNLSGrid
     if thresh_grid is None:
         thresh_grid = np.array([0.001])
-    model = SparseNNLSGrid(method=method, thresh1_grid=thresh_grid, ncpu=ncpu, verbose=verbose, indices_associated_sigs=indices_associated_sigs)
+    model = SparseNNLSGrid(method=method, thresh1_grid=thresh_grid, ncpu=ncpu, verbose=verbose, indices_associated_sigs=None)
     model.fit(W, W_catalog)
     # Identify new signatures not in the catalog.
     thresh2 = model.thresh2_grid[0]
@@ -157,6 +172,9 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
         key = (thresh, thresh2)
         W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced_grid[key], model.cos_similarities_grid[key], thresh_new_sig)
         W_s, sig_map = _clear_W_s(W, W_s, sig_map)
+        ## Add missing connected signatures
+        if connected_sigs:
+            W_s = _add_missing_connected_sigs(W_s, W_catalog)
         W_s_grid[thresh] = W_s
         sig_map_grid[thresh] = sig_map
     return W_s_grid, sig_map_grid, model
