@@ -69,7 +69,7 @@ snv_types_96_list = ([["C>A", item] for item in trinucleotides_C] +
                      [["T>C", item] for item in trinucleotides_T] +
                      [["T>G", item] for item in trinucleotides_T])
 
-sigs_associated = [['SBS2','SBS13'], ['SBS17a','SBS17b'], ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']]
+SIGS_ASSOCIATED = [['SBS2','SBS13'], ['SBS17a','SBS17b'], ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']]
 
 # Need to update
 indel_types_83_str = [
@@ -648,7 +648,7 @@ def get_sig_indices_associated(signatures, signatures_catalog):
     signatures = np.array(signatures)
     nsig = signatures.size
 
-    for entry in sigs_associated:
+    for entry in SIGS_ASSOCIATED:
         has_entry = False
         missing_item = []
         for item in entry:
@@ -665,7 +665,7 @@ def get_sig_indices_associated(signatures, signatures_catalog):
 
     indices_associated = []
 
-    for entry in sigs_associated:
+    for entry in SIGS_ASSOCIATED:
         indices_this = []
         has_entry = False
         for item in entry:
