@@ -644,7 +644,10 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
 
     return statistics
 
-def get_sig_indices_associated(signatures, signatures_catalog):
+def get_sig_indices_associated(signatures, signatures_catalog=None):
+    """
+    signatures_catalog is only used to preseve orders of the signature names.
+    """
     signatures = np.array(signatures)
     nsig = signatures.size
 
@@ -661,7 +664,8 @@ def get_sig_indices_associated(signatures, signatures_catalog):
             signatures = np.append(signatures, missing_item)
 
     signatures = np.sort(signatures)
-    signatures = [item for index,item in enumerate(signatures_catalog) if item in signatures]
+    if signatures_catalog is not None:
+        signatures = [item for index,item in enumerate(signatures_catalog) if item in signatures]
 
     indices_associated = []
 

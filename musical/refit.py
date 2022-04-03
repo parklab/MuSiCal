@@ -98,7 +98,7 @@ def _clear_W_s(W, W_s, sig_map, min_sum_0p01 = 0.15, min_sig_contrib_ratio = 0.2
     sig_map = sig_map[sig_map.sum(1) > 0]
     W_s = W_s[sig_map.index]
     return W_s, sig_map
-    
+
 def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
           indices_associated_sigs=None):
     """Wrapper around SparseNNLS for matching
