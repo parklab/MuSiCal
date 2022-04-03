@@ -42,7 +42,7 @@ def refit(X, W, method='likelihood_bidirectional', thresh=None,
         for key in W_sigs:
             if key in SIGS_ASSOCIATED_DICT.keys():
                 for sig in SIGS_ASSOCIATED_DICT[key]:
-                    if sig not in W_s_sigs:
+                    if sig not in W_sigs:
                         missing_sigs.append(sig)
         if len(missing_sigs) > 0:
             warnings.warn(('In refit: connected_sigs is set to True. The input W contains signatures with connected signatures. ' +
@@ -76,7 +76,7 @@ def refit_grid(X, W, method='likelihood_bidirectional', thresh_grid=None, ncpu=1
         for key in W_sigs:
             if key in SIGS_ASSOCIATED_DICT.keys():
                 for sig in SIGS_ASSOCIATED_DICT[key]:
-                    if sig not in W_s_sigs:
+                    if sig not in W_sigs:
                         missing_sigs.append(sig)
         if len(missing_sigs) > 0:
             warnings.warn(('In refit: connected_sigs is set to True. The input W contains signatures with connected signatures. ' +
