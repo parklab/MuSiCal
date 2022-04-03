@@ -646,7 +646,8 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
 
 def get_sig_indices_associated(signatures, signatures_catalog=None):
     """
-    signatures_catalog is only used to preseve orders of the signature names.
+    signatures_catalog is used to get orders of the signature names.
+    It is also used for filtering out signatures not considered (i.e., those not in signatures_catalog).
     """
     signatures = np.array(signatures)
     nsig = signatures.size
