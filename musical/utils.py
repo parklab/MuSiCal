@@ -70,6 +70,17 @@ snv_types_96_list = ([["C>A", item] for item in trinucleotides_C] +
                      [["T>G", item] for item in trinucleotides_T])
 
 SIGS_ASSOCIATED = [['SBS2','SBS13'], ['SBS17a','SBS17b'], ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']]
+SIGS_ASSOCIATED_DICT = {
+    'SBS2':['SBS2', 'SBS13'],
+    'SBS13': ['SBS2', 'SBS13'],
+    'SBS17a': ['SBS17a', 'SBS17b'],
+    'SBS17b': ['SBS17a', 'SBS17b'],
+    'SBS10a': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS10b': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS10c': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS10d': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS28': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']
+}
 
 # Need to update
 indel_types_83_str = [
