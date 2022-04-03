@@ -666,6 +666,7 @@ def get_sig_indices_associated(signatures, signatures_catalog=None):
     signatures = np.sort(signatures)
     if signatures_catalog is not None:
         signatures = [item for index,item in enumerate(signatures_catalog) if item in signatures]
+        signatures = np.array(signatures)
 
     indices_associated = []
 
