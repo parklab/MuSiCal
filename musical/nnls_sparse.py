@@ -49,7 +49,7 @@ def nnls_thresh_naive(x, W, thresh=0.05, thresh_agnostic=0.0, indices_associated
     if len(indices_retained) == 0:
         indices_retained = np.array([np.argmax(h)])
 
-    if indices_associated_sigs != None:
+    if indices_associated_sigs is not None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
                 indices_retained = np.unique(np.append(indices_retained, ind_pair))
@@ -59,7 +59,7 @@ def nnls_thresh_naive(x, W, thresh=0.05, thresh_agnostic=0.0, indices_associated
     return h
 
 
-def nnls_thresh(x, W, thresh=0.05, thresh_agnostic=0.0):
+def nnls_thresh(x, W, thresh=0.05, thresh_agnostic=0.0, indices_associated_sigs=None):
     """Thresholded nnls
 
     An initial NNLS is first done. Based on the initial result,
@@ -103,6 +103,12 @@ def nnls_thresh(x, W, thresh=0.05, thresh_agnostic=0.0):
             if np.array_equal(indices_retained_next, indices_retained):
                 break
             indices_retained = indices_retained_next
+    # Final NNLS
+    if indices_associated_sigs is not None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
+    h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
     return h
 
@@ -181,7 +187,7 @@ def nnls_likelihood_backward(x, W, thresh=0.001, per_trial=True, indices_associa
                 indices_retained = np.array([i for i in indices_retained if i != index_remove])
 
     ### Final NNLS
-    if indices_associated_sigs != None:
+    if indices_associated_sigs is not None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
                 indices_retained = np.unique(np.append(indices_retained, ind_pair))
@@ -288,7 +294,7 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=No
         warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
                       UserWarning)
     ### Final NNLS
-    if indices_associated_sigs != None:
+    if indices_associated_sigs is not None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
                 indices_retained = np.unique(np.append(indices_retained, ind_pair))
@@ -298,7 +304,7 @@ def nnls_likelihood_bidirectional(x, W, thresh_backward=0.001, thresh_forward=No
     return h
 
 
-def nnls_cosine_bidirectional(x, W, thresh_backward=0.01, thresh_forward=None, max_iter=1000):
+def nnls_cosine_bidirectional(x, W, thresh_backward=0.01, thresh_forward=None, max_iter=1000, indices_associated_sigs=None):
     if thresh_forward is None:
         thresh_forward = thresh_backward
     if thresh_backward > thresh_forward:
@@ -373,6 +379,10 @@ def nnls_cosine_bidirectional(x, W, thresh_backward=0.01, thresh_forward=None, m
         warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
                       UserWarning)
     ### Final NNLS
+    if indices_associated_sigs is not None:
+        for ind_pair in indices_associated_sigs:
+            if any(item in ind_pair for item in indices_retained):
+                indices_retained = np.unique(np.append(indices_retained, ind_pair))
     h, _ = sp.optimize.nnls(W[:, indices_retained], x)
     h = _fill_vector(h, indices_retained, n_sigs)
     return h
@@ -411,7 +421,7 @@ def nnls_likelihood_backward_relaxed(x, W, thresh=0.001, per_trial=True, indices
                 index_remove = indices_retained[np.argmin(loglikelihoods)]
                 indices_retained = np.array([i for i in indices_retained if i != index_remove])
     ### Final NNLS
-    if indices_associated_sigs != None:
+    if indices_associated_sigs is not None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
                 indices_retained = np.unique(np.append(indices_retained, ind_pair))
@@ -504,7 +514,7 @@ def nnls_likelihood_bidirectional_relaxed(x, W, thresh_backward=0.001, thresh_fo
         warnings.warn('Max_iter reached, suggesting that the problem may not converge. Or try increasing max_iter.',
                       UserWarning)
     ### Final NNLS
-    if indices_associated_sigs != None:
+    if indices_associated_sigs is not None:
         for ind_pair in indices_associated_sigs:
             if any(item in ind_pair for item in indices_retained):
                 indices_retained = np.unique(np.append(indices_retained, ind_pair))
@@ -582,7 +592,7 @@ class SparseNNLS:
                 self.thresh2 = 0.0
             self.thresh_agnostic = self.thresh2
             self.H = [
-                nnls_thresh(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic) for x in self._X_in.T.values
+                nnls_thresh(x, self.W.values, thresh=self.thresh, thresh_agnostic=self.thresh_agnostic, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
             ]
         elif self.method == 'likelihood_backward':
             if self.thresh1 is None:
@@ -646,7 +656,7 @@ class SparseNNLS:
             if self.max_iter is None:
                 self.max_iter = 1000
             self.H = [
-                nnls_cosine_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter) for x in self._X_in.T.values
+                nnls_cosine_bidirectional(x, self.W.values, thresh_backward=self.thresh_backward, thresh_forward=self.thresh_forward, max_iter=self.max_iter, indices_associated_sigs=self.indices_associated_sigs) for x in self._X_in.T.values
             ]
         else:
             raise ValueError('Invalid method for SparseNNLS.')
@@ -659,6 +669,12 @@ class SparseNNLS:
             indices_all = np.arange(0, n_sigs)
             for x, h in zip(self.X.T.values, self.H):
                 indices_retained = indices_all[h > 0]
+                ### Not sure if this is actually necessary. I think it does not matter.
+                if self.indices_associated_sigs is not None:
+                    for ind_pair in self.indices_associated_sigs:
+                        if any(item in ind_pair for item in indices_retained):
+                            indices_retained = np.unique(np.append(indices_retained, ind_pair))
+                ###
                 h_new, _ = sp.optimize.nnls(self.W.iloc[:, indices_retained], x)
                 h_new = _fill_vector(h_new, indices_retained, n_sigs)
                 tmp.append(h_new)
@@ -751,6 +767,11 @@ class SparseNNLSGrid:
             if self.thresh2_grid is None:
                 self.thresh2_grid = np.array([None])
         elif self.method == 'likelihood_bidirectional_relaxed':
+            if self.thresh1_grid is None:
+                self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
+            if self.thresh2_grid is None:
+                self.thresh2_grid = np.array([None])
+        elif self.method == 'cosine_bidirectional':
             if self.thresh1_grid is None:
                 self.thresh1_grid = np.concatenate([np.array([0.0]), np.geomspace(0.0001, 5, 50)])
             if self.thresh2_grid is None:
