@@ -1210,6 +1210,11 @@ class DenovoSig:
         return self
 
     def _select_best_grid_point(self):
+        """
+        TODO:
+        1. Right now grid points with new signatures are removed independent of the errors. In the future, modify it so that
+        new signatures are allowed if it improves the error a lot. Then it can be used as an indicator of discovery of a new signature. 
+        """
         # 1. Avoid using new signatures
         # Select those solutions where sigs_assigned does not contain any de novo signatures.
         candidate_grid_points = [key for key in self.W_simul_grid.keys() if len(set(self.sigs_assigned_grid[key]).intersection(self.signatures)) == 0]
