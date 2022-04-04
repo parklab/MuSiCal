@@ -69,7 +69,18 @@ snv_types_96_list = ([["C>A", item] for item in trinucleotides_C] +
                      [["T>C", item] for item in trinucleotides_T] +
                      [["T>G", item] for item in trinucleotides_T])
 
-sigs_associated = [['SBS2','SBS13'], ['SBS17a','SBS17b'], ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']]
+SIGS_ASSOCIATED = [['SBS2','SBS13'], ['SBS17a','SBS17b'], ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']]
+SIGS_ASSOCIATED_DICT = {
+    'SBS2':['SBS2', 'SBS13'],
+    'SBS13': ['SBS2', 'SBS13'],
+    'SBS17a': ['SBS17a', 'SBS17b'],
+    'SBS17b': ['SBS17a', 'SBS17b'],
+    'SBS10a': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS10b': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS10c': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS10d': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
+    'SBS28': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']
+}
 
 # Need to update
 indel_types_83_str = [
@@ -644,11 +655,15 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
 
     return statistics
 
-def get_sig_indices_associated(signatures, signatures_catalog):
+def get_sig_indices_associated(signatures, signatures_catalog=None):
+    """
+    signatures_catalog is used to get orders of the signature names.
+    It is also used for filtering out signatures not considered (i.e., those not in signatures_catalog).
+    """
     signatures = np.array(signatures)
     nsig = signatures.size
 
-    for entry in sigs_associated:
+    for entry in SIGS_ASSOCIATED:
         has_entry = False
         missing_item = []
         for item in entry:
@@ -660,12 +675,13 @@ def get_sig_indices_associated(signatures, signatures_catalog):
         if has_entry and len(missing_item) > 0:
             signatures = np.append(signatures, missing_item)
 
-    signatures = np.sort(signatures)
-    signatures = [item for index,item in enumerate(signatures_catalog) if item in signatures]
+    if signatures_catalog is not None:
+        signatures = [item for index,item in enumerate(signatures_catalog) if item in signatures]
+        signatures = np.array(signatures)
 
     indices_associated = []
 
-    for entry in sigs_associated:
+    for entry in SIGS_ASSOCIATED:
         indices_this = []
         has_entry = False
         for item in entry:
