@@ -1209,7 +1209,126 @@ class DenovoSig:
         self.H_frobenius_dist_mean = np.mean(self.H_frobenius_dist)
         return self
 
-    def validate_grid(self, validate_n_replicates=1, W_selection_method='pvalue', W_cos_dist_thresh=0.02, W_pvalue_thresh=0.05):
+    def _select_best_grid_point(self):
+        # 1. Avoid using new signatures
+        # Select those solutions where sigs_assigned does not contain any de novo signatures.
+        candidate_grid_points = [key for key in self.W_simul_grid.keys() if len(set(self.sigs_assigned_grid[key]).intersection(self.signatures)) == 0]
+        if len(candidate_grid_points) == 0:
+            warnings.warn('During grid search, all solutions contain new signatures. This could potentially mean that '
+                          'a new signature does exist. Or, try decreasing thresh_new_sig.',
+                          UserWarning)
+            candidate_grid_points = list(self.W_simul_grid.keys())
+        else:
+            pass
+        ### Looking at distance between (W_simul, H_simul) and (W_data, H_data)
+        if self.grid_selection_method == 'distance':
+            # 2. Smallest W_cos_dist
+            W_cos_dist_min = np.min([self.W_cos_dist_mean_grid[key] for key in candidate_grid_points])
+            # Candidates: W_cos_dist within W_cos_dist_min + self.grid_selection_cos_thresh
+            candidate_grid_points = [key for key in candidate_grid_points if self.W_cos_dist_mean_grid[key] <= W_cos_dist_min + self.grid_selection_cos_thresh]
+            if len(candidate_grid_points) == 1:
+                self.best_grid_point = candidate_grid_points[0]
+            else:
+                # 3. Look at number of assigned sigs
+                n_sigs_assigned_min = np.min([self.n_sigs_assigned_grid[key] for key in candidate_grid_points])
+                candidate_grid_points = [key for key in candidate_grid_points if self.n_sigs_assigned_grid[key] == n_sigs_assigned_min]
+                if len(candidate_grid_points) == 1:
+                    self.best_grid_point = candidate_grid_points[0]
+                else:
+                    if self.grid_selection_use_H:
+                        # 4. Look at H error
+                        tmp = [[key, self.H_frobenius_dist_mean_grid[key]] for key in candidate_grid_points]
+                        tmp = sorted(tmp, key=itemgetter(1))
+                        self.best_grid_point = tmp[0][0]
+                    else:
+                        # 4. Select the sparest result
+                        tmp = [[key, key[0], key[1]] for key in candidate_grid_points]
+                        # First select largest thresh_refit, then largest thresh_match
+                        tmp = sorted(tmp, key=itemgetter(2, 1), reverse=True)
+                        self.best_grid_point = tmp[0][0]
+        ### Looking at p-values
+        elif self.grid_selection_method == 'pvalue':
+            # 2. Element wise errors between W_simul and W_data.
+            elementwise_errors_W = []
+            for key in candidate_grid_points:
+                W_simul = np.mean(self.W_simul_grid[key], 0) # We take the average signatures of multiple replicates of simulation results here.
+                error = np.absolute((self.W - W_simul).flatten())
+                #elementwise_errors_W.append([key, np.mean(error), error])
+                elementwise_errors_W.append([key, self.W_cos_dist_mean_grid[key], error]) # We can decide how to identify the 'best' one.
+            # Best result
+            elementwise_errors_W = sorted(elementwise_errors_W, key=itemgetter(1))
+            error_best = elementwise_errors_W[0][2]
+            # Test differences
+            self.W_simul_error_pvalue_grid = {}
+            self.W_simul_error_pvalue_tail_grid = {}
+            candidate_grid_points = []
+            for key, _, error in elementwise_errors_W:
+                pvalue = stats.mannwhitneyu(error_best, error, alternative='less')[1]
+                pvalue_tail = differential_tail_test(error_best, error, percentile=95, alternative='less')[1]
+                self.W_simul_error_pvalue_grid[key] = pvalue
+                self.W_simul_error_pvalue_tail_grid[key] = pvalue_tail
+                if pvalue > self.grid_selection_pvalue_thresh and pvalue_tail > self.grid_selection_pvalue_thresh:
+                    candidate_grid_points.append(key)
+            ########
+            if len(candidate_grid_points) == 1:
+                self.best_grid_point = candidate_grid_points[0]
+            else:
+                # 3. Look at number of assigned sigs
+                n_sigs_assigned_min = np.min([self.n_sigs_assigned_grid[key] for key in candidate_grid_points])
+                candidate_grid_points = [key for key in candidate_grid_points if self.n_sigs_assigned_grid[key] == n_sigs_assigned_min]
+                if len(candidate_grid_points) == 1:
+                    self.best_grid_point = candidate_grid_points[0]
+                else:
+                    if self.grid_selection_use_H:
+                        # 4. Look at p-values for H matrix
+                        elementwise_errors_H = []
+                        for key in candidate_grid_points:
+                            H_simul = np.mean(self.H_simul_grid[key], 0)
+                            error = np.absolute((self.H - H_simul).flatten())
+                            elementwise_errors_H.append([key, self.H_frobenius_dist_mean_grid[key], error])
+                        elementwise_errors_H = sorted(elementwise_errors_H, key=itemgetter(1))
+                        error_best = elementwise_errors_H[0][2]
+                        # Test differences
+                        self.H_simul_error_pvalue_grid = {}
+                        self.H_simul_error_pvalue_tail_grid = {}
+                        candidate_grid_points = []
+                        for key, _, error in elementwise_errors_H:
+                            pvalue = stats.mannwhitneyu(error_best, error, alternative='less')[1]
+                            pvalue_tail = differential_tail_test(error_best, error, percentile=95, alternative='less')[1]
+                            self.H_simul_error_pvalue_grid[key] = pvalue
+                            self.H_simul_error_pvalue_tail_grid[key] = pvalue_tail
+                            if pvalue > self.grid_selection_pvalue_thresh and pvalue_tail > self.grid_selection_pvalue_thresh:
+                                candidate_grid_points.append(key)
+                        if len(candidate_grid_points) == 1:
+                            self.best_grid_point = candidate_grid_points[0]
+                        else:
+                            # 5. Select the sparsest result
+                            tmp = [[key, key[0], key[1]] for key in candidate_grid_points]
+                            # First select largest thresh_refit, then largest thresh_match
+                            tmp = sorted(tmp, key=itemgetter(2, 1), reverse=True)
+                            self.best_grid_point = tmp[0][0]
+                    else:
+                        # 4. Select the sparsest result
+                        tmp = [[key, key[0], key[1]] for key in candidate_grid_points]
+                        # First select largest thresh_refit, then largest thresh_match
+                        tmp = sorted(tmp, key=itemgetter(2, 1), reverse=True)
+                        self.best_grid_point = tmp[0][0]
+        ###
+        self.thresh_match = self.best_grid_point[0]
+        self.thresh_refit = self.best_grid_point[1]
+        self.W_s = self.W_s_grid[self.best_grid_point]
+        self.H_s = self.H_s_grid[self.best_grid_point]
+        self.sigs_assigned = self.sigs_assigned_grid[self.best_grid_point]
+        self.n_sigs_assigned = self.n_sigs_assigned_grid[self.best_grid_point]
+        self.W_cos_dist = self.W_cos_dist_grid[self.best_grid_point]
+        self.W_cos_dist_mean = self.W_cos_dist_mean_grid[self.best_grid_point]
+        self.H_frobenius_dist = self.H_frobenius_dist_grid[self.best_grid_point]
+        self.H_frobenius_dist_mean = self.H_frobenius_dist_mean_grid[self.best_grid_point]
+        return self
+
+    def validate_grid(self, validate_n_replicates=1,
+                      grid_selection_method='pvalue', grid_selection_use_H=True,
+                      grid_selection_pvalue_thresh=0.05, grid_selection_cos_thresh=0.02):
         """Validation on a grid.
 
         W_selection_method: 'pvalue' or 'cosine'
@@ -1224,10 +1343,11 @@ class DenovoSig:
         if W_selection_method not in ['pvalue', 'cosine']:
             raise ValueError('Bad input for W_selection_method.')
         ################# Run validation
-        self.W_selection_method = W_selection_method
-        self.W_pvalue_thresh = W_pvalue_thresh
         self.validate_n_replicates = validate_n_replicates
-        self.W_cos_dist_thresh = W_cos_dist_thresh
+        self.grid_selection_method = grid_selection_method
+        self.grid_selection_use_H = grid_selection_use_H
+        self.grid_selection_pvalue_thresh = grid_selection_pvalue_thresh
+        self.grid_selection_cos_thresh = grid_selection_cos_thresh
         self.X_simul_grid = {}
         self.W_simul_grid = {}
         self.H_simul_grid = {}
@@ -1274,72 +1394,7 @@ class DenovoSig:
                 self.W_cos_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(W_cos_dist)
                 self.H_frobenius_dist_mean_grid[(thresh_match, thresh_refit)] = np.mean(H_frobenius_dist)
         ################# Select best result
-        if self.W_selection_method == 'cosine':
-            # Smallest W_cos_dist
-            W_cos_dist_min = np.min(list(self.W_cos_dist_mean_grid.values()))
-            # Candidates: W_cos_dist within W_cos_dist_min + self.W_cos_dist_thresh
-            candidate_grid_points = [key for key, value in self.W_cos_dist_mean_grid.items() if value <= W_cos_dist_min + self.W_cos_dist_thresh]
-        elif self.W_selection_method == 'pvalue':
-            # Element wise errors between W_simul and W_data
-            elementwise_errors_W = []
-            for key, value in self.W_simul_grid.items():
-                W_simul = np.mean(value, 0) # We take the average signatures of multiple replicates of simulation results here.
-                error = np.absolute((self.W - W_simul).flatten())
-                #elementwise_errors_W.append([key, np.mean(error), error])
-                elementwise_errors_W.append([key, self.W_cos_dist_mean_grid[key], error]) # We can decide how to identify the 'best' one.
-            # Best result
-            elementwise_errors_W = sorted(elementwise_errors_W, key=itemgetter(1))
-            error_best = elementwise_errors_W[0][2]
-            # Test differences
-            self.W_simul_error_pvalue_grid = {}
-            self.W_simul_error_pvalue_tail_grid = {}
-            candidate_grid_points = []
-            for key, _, error in elementwise_errors_W:
-                pvalue = stats.mannwhitneyu(error_best, error, alternative='less')[1]
-                pvalue_tail = differential_tail_test(error_best, error, percentile=95, alternative='less')[1]
-                self.W_simul_error_pvalue_grid[key] = pvalue
-                self.W_simul_error_pvalue_tail_grid[key] = pvalue_tail
-                if pvalue > self.W_pvalue_thresh and pvalue_tail > self.W_pvalue_thresh:
-                    candidate_grid_points.append(key)
-        ########
-        if len(candidate_grid_points) == 1:
-            self.best_grid_point = candidate_grid_points[0]
-        else:
-            # Avoid using new signatures
-            # Select those solutions where sigs_assigned does not contain any de novo signatures.
-            _candidate_grid_points = [key for key in candidate_grid_points if len(set(self.sigs_assigned_grid[key]).intersection(self.signatures)) == 0]
-            if len(_candidate_grid_points) == 0:
-                warnings.warn('During grid search, all reasonable solutions contain new signatures. This could potentially mean that '
-                              'a new signature does exist. Or, try increasing W_cos_dist_thresh or decreasing thresh_new_sig.',
-                              UserWarning)
-                # Keep candidate_grid_points unchanged
-            else:
-                candidate_grid_points = _candidate_grid_points
-            ###
-            if len(candidate_grid_points) == 1:
-                self.best_grid_point = candidate_grid_points[0]
-            else:
-                # Look at number of assigned sigs
-                n_sigs_assigned_min = np.min([self.n_sigs_assigned_grid[key] for key in candidate_grid_points])
-                candidate_grid_points = [key for key in candidate_grid_points if self.n_sigs_assigned_grid[key] == n_sigs_assigned_min]
-                if len(candidate_grid_points) == 1:
-                    self.best_grid_point = candidate_grid_points[0]
-                else:
-                    # Look at H error
-                    # Or choose the one with the strongest sparsity here.
-                    tmp = [[key, self.H_frobenius_dist_mean_grid[key]] for key in candidate_grid_points]
-                    tmp = sorted(tmp, key=itemgetter(1))
-                    self.best_grid_point = tmp[0][0]
-        self.thresh_match = self.best_grid_point[0]
-        self.thresh_refit = self.best_grid_point[1]
-        self.W_s = self.W_s_grid[self.best_grid_point]
-        self.H_s = self.H_s_grid[self.best_grid_point]
-        self.sigs_assigned = self.sigs_assigned_grid[self.best_grid_point]
-        self.n_sigs_assigned = self.n_sigs_assigned_grid[self.best_grid_point]
-        self.W_cos_dist = self.W_cos_dist_grid[self.best_grid_point]
-        self.W_cos_dist_mean = self.W_cos_dist_mean_grid[self.best_grid_point]
-        self.H_frobenius_dist = self.H_frobenius_dist_grid[self.best_grid_point]
-        self.H_frobenius_dist_mean = self.H_frobenius_dist_mean_grid[self.best_grid_point]
+        self._select_best_grid_point()
         return self
 
     ###########################################################################
