@@ -1327,21 +1327,19 @@ class DenovoSig:
         return self
 
     def validate_grid(self, validate_n_replicates=1,
-                      grid_selection_method='pvalue', grid_selection_use_H=True,
+                      grid_selection_method='pvalue', grid_selection_use_H=False,
                       grid_selection_pvalue_thresh=0.05, grid_selection_cos_thresh=0.02):
         """Validation on a grid.
 
-        W_selection_method: 'pvalue' or 'cosine'
-        TODO:
-        1. Separate running the simulation and selecting the best grid point. So that we can redo selection without rerunning simulation.
+        grid_selection_method: 'pvalue' or 'distance'
         """
         ################# Check running status and input
         if not hasattr(self, 'W'):
             raise ValueError('The model has not been fitted.')
         if not hasattr(self, '_assign_grid_is_run'):
             raise ValueError('Run assign_grid first.')
-        if W_selection_method not in ['pvalue', 'cosine']:
-            raise ValueError('Bad input for W_selection_method.')
+        if grid_selection_method not in ['pvalue', 'distance']:
+            raise ValueError('Bad input for grid_selection_method.')
         ################# Run validation
         self.validate_n_replicates = validate_n_replicates
         self.grid_selection_method = grid_selection_method
