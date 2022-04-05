@@ -1152,7 +1152,7 @@ class DenovoSig:
             if hasattr(self, 'W_s') or hasattr(self, 'H_s'):
                 warnings.warn('Signature assignment W_s or H_s already present in the model. '
                               'However, external W_s and H_s are provided. The external '
-                              'assignment will be validated and the original assignment will be lost. Be careful',
+                              'assignment will be validated and the original assignment will be lost. Be careful.',
                               UserWarning)
             if not isinstance(W_s, pd.DataFrame):
                 raise ValueError('W_s needs to be a pd.DataFrame.')
@@ -1192,6 +1192,8 @@ class DenovoSig:
             # The line above is necessary because n_components_all is defined in __init__(), which is not a good thing to do.
             # We should remove any calculation within __init__(). Then the above line will not be needed.
             if self.method == 'mvnmf': # If mvnmf, fix lambda_tilde
+                if self.mvnmf_hyperparameter_method == 'all':
+                    raise ValueError('De novo discovery is performed with mvNMF and mvnmf_hyperparameter_method is set to all. However, current implementation of validation_grid is not compatible with that.')
                 model_simul.mvnmf_hyperparameter_method = 'fixed'
                 model_simul.mvnmf_lambda_tilde_grid = float(self.lambda_tilde_all[self.n_components][0])
             model_simul.fit()
@@ -1213,7 +1215,7 @@ class DenovoSig:
         """
         TODO:
         1. Right now grid points with new signatures are removed independent of the errors. In the future, modify it so that
-        new signatures are allowed if it improves the error a lot. Then it can be used as an indicator of discovery of a new signature. 
+        new signatures are allowed if it improves the error a lot. Then it can be used as an indicator of discovery of a new signature.
         """
         # 1. Avoid using new signatures
         # Select those solutions where sigs_assigned does not contain any de novo signatures.
@@ -1376,6 +1378,8 @@ class DenovoSig:
                     model_simul.max_n_components = self.n_components # Fix n_components
                     model_simul.n_components_all = np.array([self.n_components]) # Fix n_components.
                     if self.method == 'mvnmf': # If mvnmf, fix lambda_tilde
+                        if self.mvnmf_hyperparameter_method == 'all':
+                            raise ValueError('De novo discovery is performed with mvNMF and mvnmf_hyperparameter_method is set to all. However, current implementation of validation_grid is not compatible with that.')
                         model_simul.mvnmf_hyperparameter_method = 'fixed'
                         model_simul.mvnmf_lambda_tilde_grid = float(self.lambda_tilde_all[self.n_components][0])
                     model_simul.fit()
