@@ -1003,7 +1003,7 @@ class DenovoSig:
             plt.savefig(outfile, bbox_inches='tight')
 
     def assign(self, W_catalog, method_assign='likelihood_bidirectional',
-               thresh_match=None, thresh_refit=None, thresh_new_sig=0.8, connected_sigs=False):
+               thresh_match=None, thresh_refit=None, thresh_new_sig=0.8, connected_sigs=False, clear_W_s=True):
         # Check if fit has been run
         if not hasattr(self, 'W'):
             raise ValueError('The model has not been fitted.')
@@ -1032,9 +1032,10 @@ class DenovoSig:
         self.thresh_refit = thresh_refit
         self.thresh_new_sig = thresh_new_sig
         self.connected_sigs = connected_sigs
+        self.clear_W_s = clear_W_s
         self.W_s, self.H_s, self.sig_map = assign(self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
                                                   thresh_match=self.thresh_match, thresh_refit=self.thresh_refit, thresh_new_sig=self.thresh_new_sig,
-                                                  connected_sigs=self.connected_sigs)
+                                                  connected_sigs=self.connected_sigs, clear_W_s=self.clear_W_s)
         self.sigs_assigned = self.H_s.index[self.H_s.sum(1) > 0].values
         self.n_sigs_assigned = len(self.sigs_assigned)
         self.W_s = pd.DataFrame.copy(self.W_s[self.sigs_assigned])
@@ -1043,7 +1044,7 @@ class DenovoSig:
         return self
 
     def assign_grid(self, W_catalog, method_assign='likelihood_bidirectional',
-                    thresh_match_grid=None, thresh_refit_grid=None, thresh_new_sig=0.8, connected_sigs=False):
+                    thresh_match_grid=None, thresh_refit_grid=None, thresh_new_sig=0.8, connected_sigs=False, clear_W_s=True):
         # Check if fit has been run
         if not hasattr(self, 'W'):
             raise ValueError('The model has not been fitted.')
@@ -1072,11 +1073,13 @@ class DenovoSig:
         self.thresh_refit_grid = thresh_refit_grid
         self.thresh_new_sig = thresh_new_sig
         self.connected_sigs = connected_sigs
+        self.clear_W_s = clear_W_s
         W_s_grid_1d, H_s_grid, sig_map_grid_1d, thresh_match_grid_unique = assign_grid(
             self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
             thresh_match_grid=self.thresh_match_grid, thresh_refit_grid=self.thresh_refit_grid,
             thresh_new_sig=self.thresh_new_sig,
             connected_sigs=self.connected_sigs,
+            clear_W_s=self.clear_W_s,
             ncpu=self.ncpu, verbose=self.verbose
         )
         self.sig_map_grid_1d = sig_map_grid_1d

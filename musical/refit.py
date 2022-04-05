@@ -156,7 +156,7 @@ def _add_missing_connected_sigs(W_s, W_catalog):
     return W_s
 
 def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
-          connected_sigs=False):
+          connected_sigs=False, clear_W_s=True):
     """Wrapper around SparseNNLS for matching
 
     Note that only one parameter thresh1 is allowed here.
@@ -180,14 +180,15 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
     model.fit(W, W_catalog)
     # Identify new signatures not in the catalog.
     W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced, model.cos_similarities, thresh_new_sig)
-    W_s, sig_map = _clear_W_s(W, W_s, sig_map)
+    if clear_W_s:
+        W_s, sig_map = _clear_W_s(W, W_s, sig_map)
     # If connected_sigs, we add missing connected signatures to W_s
     if connected_sigs:
         W_s = _add_missing_connected_sigs(W_s, W_catalog)
     return W_s, sig_map, model
 
 def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
-               connected_sigs=False):
+               connected_sigs=False, clear_W_s=True):
     """Matching on a grid of thresholds.
     """
     # Check input
@@ -215,7 +216,8 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
     for thresh in thresh_grid:
         key = (thresh, thresh2)
         W_s, sig_map = _get_W_s(W, W_catalog, model.H_reduced_grid[key], model.cos_similarities_grid[key], thresh_new_sig)
-        W_s, sig_map = _clear_W_s(W, W_s, sig_map)
+        if clear_W_s:
+            W_s, sig_map = _clear_W_s(W, W_s, sig_map)
         ## Add missing connected signatures
         if connected_sigs:
             W_s = _add_missing_connected_sigs(W_s, W_catalog)
@@ -228,20 +230,21 @@ def assign(X, W, W_catalog,
            thresh_match=None,
            thresh_refit=None,
            thresh_new_sig=0.8,
-           connected_sigs=False):
+           connected_sigs=False,
+           clear_W_s=True):
     """Assign = match + refit.
 
     The same method will be used for both match and refit.
     Match and refit can have different thresholds. But only one threshold is allowed for each.
     If you want to skip matching, set thresh_new_sig to a value > 1.
     """
-    W_s, sig_map, _ = match(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method, thresh=thresh_match, connected_sigs=connected_sigs)
+    W_s, sig_map, _ = match(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method, thresh=thresh_match, connected_sigs=connected_sigs, clear_W_s=clear_W_s)
     H_s, _ = refit(X, W_s, method=method, thresh=thresh_refit, connected_sigs=connected_sigs)
     return W_s, H_s, sig_map
 
 def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
                 thresh_match_grid=None, thresh_refit_grid=None,
-                thresh_new_sig=0.8, connected_sigs=False,
+                thresh_new_sig=0.8, connected_sigs=False, clear_W_s=True,
                 ncpu=1, verbose=0):
     """Match and refit on a grid"""
     if thresh_match_grid is None:
@@ -251,7 +254,7 @@ def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
     # First, matching on a grid
     W_s_grid_1d, sig_map_grid_1d, _ = match_grid(W, W_catalog, thresh_new_sig=thresh_new_sig, method=method,
                                                  thresh_grid=thresh_match_grid, ncpu=ncpu, verbose=verbose,
-                                                 connected_sigs=connected_sigs)
+                                                 connected_sigs=connected_sigs, clear_W_s=clear_W_s)
     # Second, refitting on a grid.
     # When a matching result is already calculated before, do not do refitting again.
     H_s_grid = {}
