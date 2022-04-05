@@ -29,8 +29,7 @@ from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
 from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test, simulate_count_matrix
 from .nnls import nnls
-from .refit import reassign, assign, assign_grid
-from .validate import validate
+from .refit import assign, assign_grid
 from .cluster import OptimalK, hierarchical_cluster
 
 
