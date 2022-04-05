@@ -119,12 +119,17 @@ def _get_W_s(W, W_catalog, H_reduced, cos_similarities, thresh_new_sig):
         sig_map = H_reduced
     return W_s, sig_map
 
-def _clear_W_s(W, W_s, sig_map, min_sum_0p01 = 0.15, min_sig_contrib_ratio = 0.25):
+def _clear_W_s(W, W_s, sig_map, min_sum_0p01=0.15, min_sig_contrib_ratio=0.25):
+    """
+    TODO:
+    1. The 0.01 threshold may need to be adjusted for signature definitions with different numbers of channels.
+    """
     for i in range(sig_map.shape[1]):
         set_to_zero = False
         for j in range(sig_map.shape[0]):
             fij = sig_map.iat[j,i]
             if fij < 1 and fij != 0:
+                # Scale the signature according to the contribution it makes
                 contrib = np.dot(W_s[sig_map.index[j]], fij)
                 sum_above_0p01 = np.sum(contrib[contrib > 0.01])
                 max_sig_contrib_ratio = max(contrib)/max(W[sig_map.columns[i]])
