@@ -175,6 +175,11 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
         raise ValueError('W and W_catalog have different indices.')
     if len(set(W.columns).intersection(W_catalog.columns)) > 0:
         raise ValueError('W and W_catalog cannot contain signatures with the same name.')
+    if W.shape[0] == 83:
+        if clear_W_s:
+            clear_W_s = False
+            warnings.warn('The signatures might be ID signatures. Therefore clear_W_s is turned off.',
+                          UserWarning)
     # SparseNNLS
     model = SparseNNLS(method=method, thresh1=thresh, indices_associated_sigs=None)
     model.fit(W, W_catalog)
@@ -198,6 +203,11 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
         raise ValueError('W and W_catalog have different indices.')
     if len(set(W.columns).intersection(W_catalog.columns)) > 0:
         raise ValueError('W and W_catalog cannot contain signatures with the same name.')
+    if W.shape[0] == 83:
+        if clear_W_s:
+            clear_W_s = False
+            warnings.warn('The signatures might be ID signatures. Therefore clear_W_s is turned off.',
+                          UserWarning)
     # SparseNNLSGrid
     if thresh_grid is None:
         thresh_grid = np.array([0.001])

@@ -1013,6 +1013,11 @@ class DenovoSig:
         self.thresh_refit = thresh_refit
         self.thresh_new_sig = thresh_new_sig
         self.connected_sigs = connected_sigs
+        if self.W.shape[0] == 83:
+            if clear_W_s:
+                clear_W_s = False
+                warnings.warn('The signatures might be ID signatures. Therefore clear_W_s is turned off.',
+                              UserWarning)
         self.clear_W_s = clear_W_s
         self.W_s, self.H_s, self.sig_map = assign(self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
                                                   thresh_match=self.thresh_match, thresh_refit=self.thresh_refit, thresh_new_sig=self.thresh_new_sig,
@@ -1054,6 +1059,11 @@ class DenovoSig:
         self.thresh_refit_grid = thresh_refit_grid
         self.thresh_new_sig = thresh_new_sig
         self.connected_sigs = connected_sigs
+        if self.W.shape[0] == 83:
+            if clear_W_s:
+                clear_W_s = False
+                warnings.warn('The signatures might be ID signatures. Therefore clear_W_s is turned off.',
+                              UserWarning)
         self.clear_W_s = clear_W_s
         W_s_grid_1d, H_s_grid, sig_map_grid_1d, thresh_match_grid_unique = assign_grid(
             self.X_df, self.W_df, self.W_catalog, method=self.method_assign,
