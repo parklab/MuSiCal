@@ -156,7 +156,7 @@ def _add_missing_connected_sigs(W_s, W_catalog):
     return W_s
 
 def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
-          connected_sigs=False, clear_W_s=True):
+          connected_sigs=False, clear_W_s=False):
     """Wrapper around SparseNNLS for matching
 
     Note that only one parameter thresh1 is allowed here.
@@ -175,10 +175,9 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
         raise ValueError('W and W_catalog have different indices.')
     if len(set(W.columns).intersection(W_catalog.columns)) > 0:
         raise ValueError('W and W_catalog cannot contain signatures with the same name.')
-    if W.shape[0] == 83:
-        if clear_W_s:
-            clear_W_s = False
-            warnings.warn('The signatures might be ID signatures. Therefore clear_W_s is turned off.',
+    if W.shape[0] == 96:
+        if not clear_W_s:
+            warnings.warn('For 96-dimensional SBS signatures, you can try clear_W_s=True.',
                           UserWarning)
     # SparseNNLS
     model = SparseNNLS(method=method, thresh1=thresh, indices_associated_sigs=None)
@@ -193,7 +192,7 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
     return W_s, sig_map, model
 
 def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
-               connected_sigs=False, clear_W_s=True):
+               connected_sigs=False, clear_W_s=False):
     """Matching on a grid of thresholds.
     """
     # Check input
@@ -203,10 +202,9 @@ def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectiona
         raise ValueError('W and W_catalog have different indices.')
     if len(set(W.columns).intersection(W_catalog.columns)) > 0:
         raise ValueError('W and W_catalog cannot contain signatures with the same name.')
-    if W.shape[0] == 83:
-        if clear_W_s:
-            clear_W_s = False
-            warnings.warn('The signatures might be ID signatures. Therefore clear_W_s is turned off.',
+    if W.shape[0] == 96:
+        if not clear_W_s:
+            warnings.warn('For 96-dimensional SBS signatures, you can try clear_W_s=True.',
                           UserWarning)
     # SparseNNLSGrid
     if thresh_grid is None:
@@ -241,7 +239,7 @@ def assign(X, W, W_catalog,
            thresh_refit=None,
            thresh_new_sig=0.8,
            connected_sigs=False,
-           clear_W_s=True):
+           clear_W_s=False):
     """Assign = match + refit.
 
     The same method will be used for both match and refit.
@@ -254,7 +252,7 @@ def assign(X, W, W_catalog,
 
 def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
                 thresh_match_grid=None, thresh_refit_grid=None,
-                thresh_new_sig=0.8, connected_sigs=False, clear_W_s=True,
+                thresh_new_sig=0.8, connected_sigs=False, clear_W_s=False,
                 ncpu=1, verbose=0):
     """Match and refit on a grid"""
     if thresh_match_grid is None:
