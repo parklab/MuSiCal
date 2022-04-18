@@ -1302,14 +1302,14 @@ class DenovoSig:
                         else:
                             # 5. Select the sparsest result
                             tmp = [[key, key[0], key[1]] for key in candidate_grid_points]
-                            # First select largest thresh_refit, then largest thresh_match
-                            tmp = sorted(tmp, key=itemgetter(2, 1), reverse=True)
+                            # First select largest thresh_match, then largest thresh_refit
+                            tmp = sorted(tmp, key=itemgetter(1, 2), reverse=True)
                             self.best_grid_point = tmp[0][0]
                     else:
                         # 4. Select the sparsest result
                         tmp = [[key, key[0], key[1]] for key in candidate_grid_points]
-                        # First select largest thresh_refit, then largest thresh_match
-                        tmp = sorted(tmp, key=itemgetter(2, 1), reverse=True)
+                        # First select largest thresh_match, then largest thresh_refit
+                        tmp = sorted(tmp, key=itemgetter(1, 2), reverse=True)
                         self.best_grid_point = tmp[0][0]
         ###
         self.thresh_match = self.best_grid_point[0]
