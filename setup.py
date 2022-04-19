@@ -11,7 +11,7 @@ with open('LICENSE') as f:
 
 setup(
     name='MuSiCal',
-    version='1.0',
+    version='v1.0.0',
     description='A comprehensive toolkit for mutational signature analysis',
     long_description=readme,
     author='Hu Jin, Doga Gulhan',
