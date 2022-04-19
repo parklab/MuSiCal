@@ -155,7 +155,7 @@ def _add_missing_connected_sigs(W_s, W_catalog):
     W_s = pd.concat([W_s, W_catalog[missing_sigs]], axis=1)
     return W_s
 
-def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh=None,
+def match(W, W_catalog, thresh_new_sig=0.0, method='likelihood_bidirectional', thresh=None,
           connected_sigs=False, clean_W_s=False):
     """Wrapper around SparseNNLS for matching
 
@@ -191,7 +191,7 @@ def match(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', t
         W_s = _add_missing_connected_sigs(W_s, W_catalog)
     return W_s, sig_map, model
 
-def match_grid(W, W_catalog, thresh_new_sig=0.8, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
+def match_grid(W, W_catalog, thresh_new_sig=0.0, method='likelihood_bidirectional', thresh_grid=None, ncpu=1, verbose=0,
                connected_sigs=False, clean_W_s=False):
     """Matching on a grid of thresholds.
     """
@@ -237,7 +237,7 @@ def assign(X, W, W_catalog,
            method='likelihood_bidirectional',
            thresh_match=None,
            thresh_refit=None,
-           thresh_new_sig=0.8,
+           thresh_new_sig=0.0,
            connected_sigs=False,
            clean_W_s=False):
     """Assign = match + refit.
@@ -252,7 +252,7 @@ def assign(X, W, W_catalog,
 
 def assign_grid(X, W, W_catalog, method='likelihood_bidirectional',
                 thresh_match_grid=None, thresh_refit_grid=None,
-                thresh_new_sig=0.8, connected_sigs=False, clean_W_s=False,
+                thresh_new_sig=0.0, connected_sigs=False, clean_W_s=False,
                 ncpu=1, verbose=0):
     """Match and refit on a grid"""
     if thresh_match_grid is None:
