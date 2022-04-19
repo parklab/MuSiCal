@@ -984,7 +984,7 @@ class DenovoSig:
             plt.savefig(outfile, bbox_inches='tight')
 
     def assign(self, W_catalog, method_assign='likelihood_bidirectional',
-               thresh_match=None, thresh_refit=None, thresh_new_sig=0.8, connected_sigs=False, clean_W_s=False):
+               thresh_match=None, thresh_refit=None, thresh_new_sig=0.0, connected_sigs=False, clean_W_s=False):
         # Check if fit has been run
         if not hasattr(self, 'W'):
             raise ValueError('The model has not been fitted.')
@@ -1029,7 +1029,7 @@ class DenovoSig:
         return self
 
     def assign_grid(self, W_catalog, method_assign='likelihood_bidirectional',
-                    thresh_match_grid=None, thresh_refit_grid=None, thresh_new_sig=0.8, connected_sigs=False, clean_W_s=False):
+                    thresh_match_grid=None, thresh_refit_grid=None, thresh_new_sig=0.0, connected_sigs=False, clean_W_s=False):
         # Check if fit has been run
         if not hasattr(self, 'W'):
             raise ValueError('The model has not been fitted.')

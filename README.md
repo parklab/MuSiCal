@@ -78,8 +78,6 @@ Now you are ready to try out the [example scripts](./examples). Remember to set 
 
 MuSiCal can be used after `import musical` within python.
 
-### General introduction
-
 The overall goal of mutational signature analysis is to decompose a mutation count matrix *X* into a signature matrix *W* and an exposure matrix *H*. Note that *X* is mutation type by sample (i.e., each column is a sample), *W* is mutation type by signature, and *H* is signature by sample.
 
 To achieve this goal, a complete pipeline involves several steps (see the figure below and our paper for more details).
@@ -89,39 +87,8 @@ To achieve this goal, a complete pipeline involves several steps (see the figure
 - Finally, MuSiCal enables validating the obtained results through the **_in silico_ validation** module to identify potential issues. The *in silico* validation module can also be used for systematic parameter optimization for matching and refitting.
 - In addition, MuSiCal provides **preprocessing** functionalities for automatic cohort stratification and outlier removal, to further improve the sensitivity of *de novo* signature discovery.
 
-See the [example scripts](./examples/example_full_pipeline.ipynb) for more detailed instructions on the full pipeline.
+[Example scripts](./examples/example_full_pipeline.ipynb) are provided to illustrate the full pipeline described above using a synthetic dataset.
+
+Refitting can also be performed as a standalone task without *de novo* signature discovery. See [example scripts](./examples/example_refitting.ipynb).
 
 ![MuSiCal workflow](./images/musical_workflow.png)
-
-### *De novo* signature discovery
-
-*De novo* signature discovery can be performed with `musical.DenovoSig`. The only required input is the mutation count matrix `X`. A minimal example is as follows:
-```
-model = musical.DenovoSig(X)
-model.fit()
-```
-
-See the [example scripts](./examples/example_denovo.ipynb) for more detailed instructions on *de novo* signature discovery.
-
-### Matching and refitting
-
-Matching and refitting can be performed with `musical.SparseNNLS`. The required input is the mutation count matrix `X` and the signature catalog `W`. A minimal example is as follows:
-```
-model = musical.SparseNNLS()
-model.fit(X, W)
-```
-
-See the [example scripts](./examples/example_refitting.ipynb) for more detailed instructions on matching and refitting.
-
-### *In silico* validation
-
-See the [example scripts](./examples/example_validation.ipynb) for more detailed instructions on *in silico* validation.
-
-### Preprocessing
-
-See the [example scripts](./examples/example_preprocessing.ipynb) for more detailed instructions on preprocessing.
-
-
-### Plotting
-
-MuSiCal also provides convenient plotting functionalities. See the [example scripts](./examples/example_plotting.ipynb) for more detailed instructions on plotting.
