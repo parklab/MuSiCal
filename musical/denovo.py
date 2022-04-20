@@ -539,6 +539,8 @@ class DenovoSig:
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             self.X = np.array(X).astype(float)
+        else:
+            self.X = X
         self.n_features, self.n_samples = self.X.shape
         if isinstance(X, pd.DataFrame):
             self.X_df = X.astype(float)
