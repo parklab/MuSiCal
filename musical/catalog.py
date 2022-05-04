@@ -118,7 +118,8 @@ class Catalog:
             if not is_PPD:
                 self._signatures = [item for index,item in enumerate(self._signatures) if item not in signatures_PPD]
                 self._W = self._W[self._signatures]
-
+        self._W_norm = self._W_norm[self._signatures]
+        
     def show_tumor_type_options(self):
         if self._sig_type == '':
             raise ValueError('Supported for SBS and Indel catalogs')
