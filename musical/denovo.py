@@ -79,7 +79,7 @@ def _filter_results(X, Ws, Hs, method='error_distribution', thresh=0.05, percent
             raise ValueError('Invalid method for _filter_results().')
 
 
-def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
+def _gather_results(X, Ws, method='cluster_by_matching', metric='cosine', n_components=None):
     """Gather NMF or mvNMF results
 
     TODO
@@ -117,7 +117,7 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
     if method == 'hierarchical':
         sigs = np.concatenate(Ws, axis=1)
         sigs = normalize(sigs, norm='l1', axis=0)
-        d = sp.spatial.distance.pdist(sigs.T, metric='cosine')
+        d = sp.spatial.distance.pdist(sigs.T, metric=metric)
         d = d.clip(0)
         d_square_form = sp.spatial.distance.squareform(d)
         linkage = sch.linkage(d, method='average')
@@ -156,7 +156,7 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
         # Distance matrix and cluster membership
         sigs = np.concatenate(Ws_matched, axis=1)
         sigs = normalize(sigs, norm='l1', axis=0)
-        d = sp.spatial.distance.pdist(sigs.T, metric='cosine')
+        d = sp.spatial.distance.pdist(sigs.T, metric=metric)
         d = d.clip(0)
         d_square_form = sp.spatial.distance.squareform(d)
         cluster_membership = np.tile(np.arange(1, n_components + 1), len(Ws))
@@ -254,7 +254,7 @@ def _gather_results(X, Ws, method='cluster_by_matching', n_components=None):
         # Distance matrix and cluster membership
         sigs = np.concatenate(Ws_matched, axis=1)
         sigs = normalize(sigs, norm='l1', axis=0)
-        d = sp.spatial.distance.pdist(sigs.T, metric='cosine')
+        d = sp.spatial.distance.pdist(sigs.T, metric=metric)
         d = d.clip(0)
         d_square_form = sp.spatial.distance.squareform(d)
         cluster_membership = np.tile(np.arange(1, n_components + 1), len(Ws))
@@ -275,7 +275,7 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
                          n_replicates, n_replicates_after_filtering_all, Ws_all=None,
                          pthresh=0.05, sil_score_mean_thresh=0.8, sil_score_min_thresh=0.2,
                          n_replicates_filter_ratio_thresh=0.2,
-                         method='algorithm1', nrefs=50, max_k_all=None):
+                         method='algorithm1', nrefs=50, max_k_all=None, metric='cosine'):
     """Select the best n_components based on reconstruction error and stability.
 
     Parameters
@@ -340,7 +340,7 @@ def _select_n_components(n_components_all, samplewise_reconstruction_errors_all,
                 optimal_k_all[n_components] = 1
             else:
                 Ws = np.concatenate(Ws_all[n_components], 1)
-                optimalK = OptimalK(Ws, max_k=max_k_all[n_components], nrefs=nrefs)
+                optimalK = OptimalK(Ws, max_k=max_k_all[n_components], nrefs=nrefs, metric=metric)
                 optimal_k_all[n_components] = optimalK.k
         ## Select candidates
         # Candidates are those n_components whose optimal k is equal to n_components
@@ -523,6 +523,7 @@ class DenovoSig:
                  filter_percentile=90,
                  # Specific for result gathering:
                  cluster_method='hierarchical',
+                 cluster_metric='cosine',
                  # Specific for n_components selection:
                  select_method='consistency',
                  select_pthresh=0.05, # Not used by the consistency method
@@ -579,6 +580,7 @@ class DenovoSig:
         self.filter_percentile=filter_percentile
         # Specific for result gathering:
         self.cluster_method=cluster_method
+        self.cluster_metric=cluster_metric
         # Specific for n_components selection:
         self.select_method=select_method
         self.select_pthresh=select_pthresh
@@ -822,7 +824,7 @@ class DenovoSig:
             self.n_replicates_after_filtering_all[n_components] = len(Ws)
             Ws_filtered_all[n_components] = Ws
             # Gather
-            W, H, sil_score, sil_score_mean, n_support = _gather_results(self.X, Ws, method=self.cluster_method)
+            W, H, sil_score, sil_score_mean, n_support = _gather_results(self.X, Ws, method=self.cluster_method, metric=self.cluster_metric)
             self.W_all[n_components] = W
             self.H_all[n_components] = H
             self.sil_score_all[n_components] = sil_score
@@ -847,7 +849,8 @@ class DenovoSig:
             n_replicates_filter_ratio_thresh=self.select_n_replicates_filter_ratio_thresh,
             method=self.select_method,
             nrefs=50,
-            max_k_all=None
+            max_k_all=None,
+            metric=self.cluster_metric
         )
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
