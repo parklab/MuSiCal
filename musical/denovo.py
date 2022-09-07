@@ -824,7 +824,7 @@ class DenovoSig:
             self.n_replicates_after_filtering_all[n_components] = len(Ws)
             Ws_filtered_all[n_components] = Ws
             # Gather
-            W, H, sil_score, sil_score_mean, n_support = _gather_results(self.X, Ws, method=self.cluster_method, metric=self.cluster_metric)
+            W, H, sil_score, sil_score_mean, n_support = _gather_results(self.X, Ws, method=self.cluster_method, metric='cosine')
             self.W_all[n_components] = W
             self.H_all[n_components] = H
             self.sil_score_all[n_components] = sil_score
