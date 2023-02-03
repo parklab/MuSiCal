@@ -152,7 +152,7 @@ def _add_missing_connected_sigs(W_s, W_catalog):
             for sig in SIGS_ASSOCIATED_DICT[key]:
                 if sig not in W_s_sigs and sig in W_catalog_sigs:
                     missing_sigs.append(sig)
-    missing_sigs = list(set(missing_sigs))
+    missing_sigs = sorted(set(missing_sigs))
     W_s = pd.concat([W_s, W_catalog[missing_sigs]], axis=1)
     return W_s
 
