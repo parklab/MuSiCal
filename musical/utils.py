@@ -649,7 +649,9 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
         if (nTP + nFP)*(nTP + nFN)*(nTN + nFP)*(nTN + nFN) == 0:
             statistics['MCC'] = 0
         else:
-            statistics['MCC'] = (nTP * nTN - nFP * nFN)/np.sqrt((nTP + nFP)*(nTP + nFN)*(nTN + nFP)*(nTN + nFN))
+            # Conversiton to fload is necessary when the integer is too large and out of range:
+            # https://stackoverflow.com/questions/47123035/python-error-when-calling-numpy-from-class-method-with-map
+            statistics['MCC'] = (nTP * nTN - nFP * nFN)/np.sqrt(float((nTP + nFP)*(nTP + nFN)*(nTN + nFP)*(nTN + nFN)))
     # Normalized MCC
     statistics['nMCC'] = (statistics['MCC'] + 1)/2
 
