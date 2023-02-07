@@ -23,7 +23,7 @@ def gini(x):
 	n = len(x)
 	aux = [xi * (2 * i - n + 1) for i, xi in enumerate(x)]
 	scaling = 1 / (n * sum(x))
-	
+
 	return scaling * sum(aux)
 
 
@@ -35,17 +35,17 @@ def n_remove_gini(x, gini_delta, thresh):
 	"""
 	n_remove = 0
 	max_n_remove = np.round((1 - thresh) * len(x))
-	
+
 	gini_old = gini(x)
 	gini_new = gini(x[:-1])
 	n_remove = 0
 	
 	while gini_old - gini_new > gini_delta and n_remove < max_n_remove:
-	
+
 		n_remove += 1
 		gini_old = gini_new
 		gini_new = gini(x[: - n_remove - 1])
-	
+
 	return n_remove
 
 
@@ -54,66 +54,66 @@ def remove_samples_based_on_gini(H, X, gini_baseline=.65, gini_delta=.005):
 	Identify signatures with unequal exposures. A signature is said to have unequal exposures if the
 	Gini coefficient of the sample exposures is higher than a given threshold.
 	For these signatures, the samples causing the gini coefficient to be high are also identified.
-	
+
 	Input:
 	------
 	H: np.ndarray
 		The exposure matrix of shape (n_signatures, n_samples)
-	
+
 	X: np.ndarray
 		The mutation count matrix of shape (n_features, n_samples)
-	
+
 	gini_baseline: float
 		Signatures with exposures having a higher Gini coefficient than 'gini_baseline' are identified
 		as having unequal exposures
-	
+
 	gini_delta: float
 		Per signature with unequal exposure, a sample is identified as a sample significanlty contributing 
 		the high Gini coefficient if removing it decreases the Gini coefficient by at least 'gini_delta'
-	
+
 	Output:
 	------
 	samples_to_keep: dict
 		keys: indices of signatures with unequal exposures
 		values: corresponding sample indices that do not (!) cause the Gini coefficient to be high
-	
+
 	X_to_keep: dict
 		keys: indices of signatures with unequal exposures
 		values: mutation count matix subsetted to the samples that do not (!) cause the Gini coefficient to be high
-	
+
 	samples_to_keep_all: np.ndarray
 		List of sample indices not significantly causing the Gini coefficient of any signature with unequal exposure to be high
 	"""
 	H, X = np.array(H), np.array(X)
-	
+
 	n_samples = H.shape[1]
-	
+
 	# normalize the exposures
 	H = H /np.sum(X, axis=0)
-	
+
 	# Gini coefficients of normalized signature exposures
 	gini_coeffs = np.array([gini(sorted(h)) for h in H])
 	sigs_to_check = np.where(gini_coeffs > gini_baseline)[0]
-	
+
 	samples_to_keep = {}
 	samples_to_remove = set()
-	
+
 	for sig_index in sigs_to_check:
-		
+
 		sorted_h, sorted_h_indices = sort_with_indices(H[sig_index,:])
 		n_remove = n_remove_gini(sorted_h, gini_delta, .8)
-		
+
 		to_keep, to_remove = np.split(sorted_h_indices, [-n_remove]) if n_remove else (sorted_h_indices, np.empty(0))
 		samples_to_keep[sig_index] = np.array(sorted(to_keep))
 		samples_to_remove |= set(to_remove)
 	
 	X_to_keep = {sig_index: X[:, samples] for sig_index, samples in samples_to_keep.items()}
-		
+
 	samples_to_keep_all = set(range(n_samples)) - samples_to_remove
 	samples_to_keep_all = np.array(sorted(samples_to_keep_all))
-	
+
 	results = (samples_to_keep, X_to_keep, samples_to_keep_all)
-	
+
 	return results
 
 
