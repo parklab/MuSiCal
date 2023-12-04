@@ -22,7 +22,7 @@ def gini(x, input_sorted=True):
     """
     if not input_sorted:
         x = np.sort(x)
-    
+
     n = len(x)
     aux = x * (2 * np.arange(n) - n + 1)
     scaling = 1 / (n * np.sum(x))
@@ -52,7 +52,7 @@ def n_remove_gini(x, gini_delta, thresh):
     return n_remove
 
 
-def remove_samples_based_on_gini(H, X, gini_baseline=.65, gini_delta=.005):
+def remove_samples_based_on_gini(H, X, gini_baseline=.65, gini_delta=.05):
     """
     Identify signatures with unequal exposures. A signature is said to have unequal exposures if the
     Gini coefficient of the sample exposures is higher than a given threshold.
