@@ -19,5 +19,6 @@ setup(
     url='https://github.com/parklab/MuSiCal',
     license=license,
     packages=find_packages(exclude=('tests', 'docs', 'benchmarks',
-                                    'examples', 'dev', 'images'))
+                                    'examples', 'dev', 'images')),
+    include_package_data=True
 )
