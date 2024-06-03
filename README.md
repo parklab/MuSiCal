@@ -51,7 +51,7 @@ python -m ipykernel install --user --name python37_musical --display-name "pytho
 Since Jupyter Notebook is installed in the `base` environment, you need to deactivate the `python37_musical` environment with `conda deactivate` or `source deactivate` (depending on your conda version) to access Jupyter Notebook. You can launch Jupyter Notebook with
 ```
 jupyter notebook
-```  
+```
 If you have installed Anaconda, you can also launch Jupyter Notebook from the graphical interface of Anaconda-Navigator.
 
 Now you are ready to try out the [example scripts](./examples). Remember to set the kernel of the notebook to `python37_musical`.

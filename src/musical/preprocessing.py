@@ -1,8 +1,8 @@
 import numpy as np
 import scipy as sp
 import scipy.cluster.hierarchy as sch
-from sklearn.preprocessing import normalize
 import scipy.stats as stats
+from sklearn.preprocessing import normalize
 
 from .cluster import OptimalK, hierarchical_cluster
 
@@ -47,12 +47,12 @@ def n_remove_gini(x, gini_delta, thresh):
 
         n_remove += 1
         gini_old = gini_new
-        gini_new = gini(x[: - n_remove - 1])
+        gini_new = gini(x[: -n_remove - 1])
 
     return n_remove
 
 
-def remove_samples_based_on_gini(H, X, gini_baseline=.65, gini_delta=.05):
+def remove_samples_based_on_gini(H, X, gini_baseline=0.65, gini_delta=0.05):
     """
     Identify signatures with unequal exposures. A signature is said to have unequal exposures if the
     Gini coefficient of the sample exposures is higher than a given threshold.
@@ -103,14 +103,20 @@ def remove_samples_based_on_gini(H, X, gini_baseline=.65, gini_delta=.05):
 
     for sig_index in sigs_to_check:
 
-        sorted_h, sorted_h_indices = sort_with_indices(H[sig_index,:])
-        n_remove = n_remove_gini(sorted_h, gini_delta, .8)
+        sorted_h, sorted_h_indices = sort_with_indices(H[sig_index, :])
+        n_remove = n_remove_gini(sorted_h, gini_delta, 0.8)
 
-        to_keep, to_remove = np.split(sorted_h_indices, [-n_remove]) if n_remove else (sorted_h_indices, np.empty(0))
+        to_keep, to_remove = (
+            np.split(sorted_h_indices, [-n_remove])
+            if n_remove
+            else (sorted_h_indices, np.empty(0))
+        )
         samples_to_keep[sig_index] = np.sort(to_keep)
         samples_to_remove |= set(to_remove)
 
-    X_to_keep = {sig_index: X[:, samples] for sig_index, samples in samples_to_keep.items()}
+    X_to_keep = {
+        sig_index: X[:, samples] for sig_index, samples in samples_to_keep.items()
+    }
 
     samples_to_keep_all = set(range(n_samples)) - samples_to_remove
     samples_to_keep_all = np.sort(list(samples_to_keep_all))
@@ -161,9 +167,9 @@ def identify_distinct_cluster(X, H, frac_thresh=0.05):
         are not used anymore.
     """
     if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
-            X = np.array(X).astype(float)
+        X = np.array(X).astype(float)
     if (type(H) != np.ndarray) or (not np.issubdtype(H.dtype, np.floating)):
-            H = np.array(H).astype(float)
+        H = np.array(H).astype(float)
     n_components, n_samples = H.shape
 
     ### Normalize H
@@ -173,32 +179,42 @@ def identify_distinct_cluster(X, H, frac_thresh=0.05):
     # 2. Previous codes use X to normalize H. Now H itself is used for the normalization. This should not matter too much.
     # 3. Now, after setting small exposures to 0, we renormalize so that each sample is summed to one. This is conceptually
     #   appealing if we want to use cosine distances later.
-    H = normalize(H, norm='l1', axis=0)
+    H = normalize(H, norm="l1", axis=0)
     H[H < frac_thresh] = 0.0
-    H = normalize(H, norm='l1', axis=0)
+    H = normalize(H, norm="l1", axis=0)
 
     ### Clustering
-    d_square_form, cluster_membership = hierarchical_cluster(H, 2, metric='cosine', linkage_method='average')
+    d_square_form, cluster_membership = hierarchical_cluster(
+        H, 2, metric="cosine", linkage_method="average"
+    )
     clust1_index = np.arange(0, n_samples)[(cluster_membership == 1)]
     clust2_index = np.arange(0, n_samples)[(cluster_membership == 2)]
     H_clust1 = H[:, clust1_index]
     H_clust2 = H[:, clust2_index]
 
     ### Identify cluster-specific signatures
-    n_clust1 = len(clust1_index) # Number of samples in cluster 1
-    n_clust2 = len(clust2_index) # Number of samples in cluster 2
-    n_clust1_pos = np.sum(H_clust1 > 0, 1) # Number of samples in cluster 1 that have positive exposures of the signature, one per signature
-    n_clust2_pos = np.sum(H_clust2 > 0, 1) # Number of samples in cluster 2 that have positive exposures of the signature, one per signature
-    pvalue_clust1_greater = [] # p-values for whether the signature has greater exposures in cluster 1 than in cluster 2, one per signature
-    pvalue_clust2_greater = [] # p-values for whether the signature has greater exposures in cluster 2 than in cluster 1, one per signature
+    n_clust1 = len(clust1_index)  # Number of samples in cluster 1
+    n_clust2 = len(clust2_index)  # Number of samples in cluster 2
+    n_clust1_pos = np.sum(
+        H_clust1 > 0, 1
+    )  # Number of samples in cluster 1 that have positive exposures of the signature, one per signature
+    n_clust2_pos = np.sum(
+        H_clust2 > 0, 1
+    )  # Number of samples in cluster 2 that have positive exposures of the signature, one per signature
+    pvalue_clust1_greater = (
+        []
+    )  # p-values for whether the signature has greater exposures in cluster 1 than in cluster 2, one per signature
+    pvalue_clust2_greater = (
+        []
+    )  # p-values for whether the signature has greater exposures in cluster 2 than in cluster 1, one per signature
     for h1, h2 in zip(H_clust1, H_clust2):
         try:
-            p = stats.mannwhitneyu(h1, h2, alternative='greater')[1]
-        except: # E.g., when the exposure of a signature is all 0 in the dataset. This could happen in later iterations of running the function.
+            p = stats.mannwhitneyu(h1, h2, alternative="greater")[1]
+        except:  # E.g., when the exposure of a signature is all 0 in the dataset. This could happen in later iterations of running the function.
             p = 1.0
         pvalue_clust1_greater.append(p)
         try:
-            p = stats.mannwhitneyu(h2, h1, alternative='greater')[1]
+            p = stats.mannwhitneyu(h2, h1, alternative="greater")[1]
         except:
             p = 1.0
         pvalue_clust2_greater.append(p)
@@ -207,53 +223,80 @@ def identify_distinct_cluster(X, H, frac_thresh=0.05):
     # A signature is considered to be specific to cluster 1, if
     # (the exposure is significantly greater in cluster 1 and less than 10% of samples in cluster 2 have positive exposures) or
     # (more than 90% of samples in cluster 1 and less than 10% of samples in cluster 2 have positive exposures)
-    sigs_clust1_specific = np.arange(0, n_components)[np.logical_or(
-        np.logical_and(pvalue_clust1_greater < 0.05, n_clust2_pos/n_clust2 < 0.1),
-        np.logical_and(n_clust1_pos/n_clust1 > 0.9, n_clust2_pos/n_clust2 < 0.1)
-    )]
-    sigs_clust2_specific = np.arange(0, n_components)[np.logical_or(
-        np.logical_and(pvalue_clust2_greater < 0.05, n_clust1_pos/n_clust1 < 0.1),
-        np.logical_and(n_clust2_pos/n_clust2 > 0.9, n_clust1_pos/n_clust1 < 0.1)
-    )]
+    sigs_clust1_specific = np.arange(0, n_components)[
+        np.logical_or(
+            np.logical_and(pvalue_clust1_greater < 0.05, n_clust2_pos / n_clust2 < 0.1),
+            np.logical_and(
+                n_clust1_pos / n_clust1 > 0.9, n_clust2_pos / n_clust2 < 0.1
+            ),
+        )
+    ]
+    sigs_clust2_specific = np.arange(0, n_components)[
+        np.logical_or(
+            np.logical_and(pvalue_clust2_greater < 0.05, n_clust1_pos / n_clust1 < 0.1),
+            np.logical_and(
+                n_clust2_pos / n_clust2 > 0.9, n_clust1_pos / n_clust1 < 0.1
+            ),
+        )
+    ]
     # If a signature has positive exposures in more than 10% of samples in both cluster 1 and 2, it is considered non-specific.
-    #sigs_nonspecific = np.arange(0, n_components)[
+    # sigs_nonspecific = np.arange(0, n_components)[
     #    np.logical_and(n_clust1_pos/n_clust1 > 0.1, n_clust2_pos/n_clust2 > 0.1)
-    #]
+    # ]
 
     ### Calculate mean exposures for cluster-specific and nonspecific signatures in the 2 clusters separately.
     if len(sigs_clust1_specific) > 0:
-        mean_fraction_clust1_sigs_in_clust1 = np.mean(np.sum(H_clust1[sigs_clust1_specific, :], 0))
-        mean_fraction_clust1_sigs_in_clust2 = np.mean(np.sum(H_clust2[sigs_clust1_specific, :], 0))
+        mean_fraction_clust1_sigs_in_clust1 = np.mean(
+            np.sum(H_clust1[sigs_clust1_specific, :], 0)
+        )
+        mean_fraction_clust1_sigs_in_clust2 = np.mean(
+            np.sum(H_clust2[sigs_clust1_specific, :], 0)
+        )
     else:
         mean_fraction_clust1_sigs_in_clust1 = np.nan
         mean_fraction_clust1_sigs_in_clust2 = np.nan
     if len(sigs_clust2_specific) > 0:
-        mean_fraction_clust2_sigs_in_clust1 = np.mean(np.sum(H_clust1[sigs_clust2_specific, :], 0))
-        mean_fraction_clust2_sigs_in_clust2 = np.mean(np.sum(H_clust2[sigs_clust2_specific, :], 0))
+        mean_fraction_clust2_sigs_in_clust1 = np.mean(
+            np.sum(H_clust1[sigs_clust2_specific, :], 0)
+        )
+        mean_fraction_clust2_sigs_in_clust2 = np.mean(
+            np.sum(H_clust2[sigs_clust2_specific, :], 0)
+        )
     else:
         mean_fraction_clust2_sigs_in_clust1 = np.nan
         mean_fraction_clust2_sigs_in_clust2 = np.nan
-    #if len(sigs_nonspecific) > 0:
+    # if len(sigs_nonspecific) > 0:
     #    mean_fraction_nonspecific_sigs_in_clust1 = np.mean(np.sum(H_clust1[sigs_nonspecific, :], 0))
     #    mean_fraction_nonspecific_sigs_in_clust2 = np.mean(np.sum(H_clust2[sigs_nonspecific, :], 0))
-    #else:
+    # else:
     #    mean_fraction_nonspecific_sigs_in_clust1 = np.nan
     #    mean_fraction_nonspecific_sigs_in_clust2 = np.nan
 
     ### Determine whether there is a distinct cluster.
     # Cluster 1 is considered distinct, if cluster 1 specific signatures contribute less than 0.05 in cluster 2 and more than 0.3 in cluster 1.
-    if ((mean_fraction_clust1_sigs_in_clust2 < 0.05 and mean_fraction_clust1_sigs_in_clust1 > 0.3) and
-        (mean_fraction_clust2_sigs_in_clust1 < 0.05 and mean_fraction_clust2_sigs_in_clust2 > 0.3)):
+    if (
+        mean_fraction_clust1_sigs_in_clust2 < 0.05
+        and mean_fraction_clust1_sigs_in_clust1 > 0.3
+    ) and (
+        mean_fraction_clust2_sigs_in_clust1 < 0.05
+        and mean_fraction_clust2_sigs_in_clust2 > 0.3
+    ):
         Xs = [X[:, clust1_index], X[:, clust2_index]]
         clusters = [clust1_index, clust2_index]
         k = 2
         distinct = [True, True]
-    elif (mean_fraction_clust1_sigs_in_clust2 < 0.05 and mean_fraction_clust1_sigs_in_clust1 > 0.3):
+    elif (
+        mean_fraction_clust1_sigs_in_clust2 < 0.05
+        and mean_fraction_clust1_sigs_in_clust1 > 0.3
+    ):
         Xs = [X[:, clust1_index], X[:, clust2_index]]
         clusters = [clust1_index, clust2_index]
         k = 2
         distinct = [True, False]
-    elif (mean_fraction_clust2_sigs_in_clust1 < 0.05 and mean_fraction_clust2_sigs_in_clust2 > 0.3):
+    elif (
+        mean_fraction_clust2_sigs_in_clust1 < 0.05
+        and mean_fraction_clust2_sigs_in_clust2 > 0.3
+    ):
         Xs = [X[:, clust1_index], X[:, clust2_index]]
         clusters = [clust1_index, clust2_index]
         k = 2
@@ -267,8 +310,16 @@ def identify_distinct_cluster(X, H, frac_thresh=0.05):
     return k, clusters, Xs, distinct
 
 
-def stratify_samples(X, H=None, sil_thresh=0.7,
-                     max_k=20, nrefs=50, metric='cosine', linkage_method='average', ref_method='a'):
+def stratify_samples(
+    X,
+    H=None,
+    sil_thresh=0.7,
+    max_k=20,
+    nrefs=50,
+    metric="cosine",
+    linkage_method="average",
+    ref_method="a",
+):
     """Stratify samples by clustering with automatic selection of cluster number.
 
     If H is provided, H will be used for clustering. Otherwise, X will be used.
@@ -318,15 +369,22 @@ def stratify_samples(X, H=None, sil_thresh=0.7,
     """
 
     if H is None:
-        data = normalize(X, norm='l1', axis=0)
+        data = normalize(X, norm="l1", axis=0)
     else:
-        data = normalize(H, norm='l1', axis=0)
+        data = normalize(H, norm="l1", axis=0)
 
     n_samples = data.shape[1]
     # Clustering with automatic selection of cluster number
-    optimalK = OptimalK(data, max_k=max_k, nrefs=nrefs, metric=metric, linkage_method=linkage_method, ref_method=ref_method)
+    optimalK = OptimalK(
+        data,
+        max_k=max_k,
+        nrefs=nrefs,
+        metric=metric,
+        linkage_method=linkage_method,
+        ref_method=ref_method,
+    )
     # Gather results
-    k = optimalK.k # Number of clusters
+    k = optimalK.k  # Number of clusters
     if k > 1:
         # If k > 1, we check per-cluster silhouette scores.
         # If at least one cluster has silhouette score > sil_thresh, we accept the clustering.

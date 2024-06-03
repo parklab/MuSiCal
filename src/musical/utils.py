@@ -1,13 +1,14 @@
 """Utilities"""
 
-import numpy as np
-import sklearn.decomposition._nmf as sknmf
-from sklearn.metrics import pairwise_distances
-from scipy.optimize import linear_sum_assignment
 import itertools
+from operator import itemgetter
+
+import numpy as np
 import scipy as sp
 import scipy.stats as stats
-from operator import itemgetter
+import sklearn.decomposition._nmf as sknmf
+from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import pairwise_distances
 from sklearn.preprocessing import normalize
 
 from .nnls_sparse import SparseNNLS
@@ -16,163 +17,182 @@ from .nnls_sparse import SparseNNLS
 # Useful globals #
 ##################
 
-trinucleotides_C = ["ACA",
-                    "ACC",
-                    "ACG",
-                    "ACT",
-                    "CCA",
-                    "CCC",
-                    "CCG",
-                    "CCT",
-                    "GCA",
-                    "GCC",
-                    "GCG",
-                    "GCT",
-                    "TCA",
-                    "TCC",
-                    "TCG",
-                    "TCT"]
+trinucleotides_C = [
+    "ACA",
+    "ACC",
+    "ACG",
+    "ACT",
+    "CCA",
+    "CCC",
+    "CCG",
+    "CCT",
+    "GCA",
+    "GCC",
+    "GCG",
+    "GCT",
+    "TCA",
+    "TCC",
+    "TCG",
+    "TCT",
+]
 
-trinucleotides_T = ["ATA",
-                    "ATC",
-                    "ATG",
-                    "ATT",
-                    "CTA",
-                    "CTC",
-                    "CTG",
-                    "CTT",
-                    "GTA",
-                    "GTC",
-                    "GTG",
-                    "GTT",
-                    "TTA",
-                    "TTC",
-                    "TTG",
-                    "TTT"]
+trinucleotides_T = [
+    "ATA",
+    "ATC",
+    "ATG",
+    "ATT",
+    "CTA",
+    "CTC",
+    "CTG",
+    "CTT",
+    "GTA",
+    "GTC",
+    "GTG",
+    "GTT",
+    "TTA",
+    "TTC",
+    "TTG",
+    "TTT",
+]
 
 snv_types_6_str = ["C>A", "C>G", "C>T", "T>A", "T>C", "T>G"]
 
-snv_types_6_set = [{"C", "A"}, {"C", "G"}, {"C", "T"},
-                   {"T", "A"}, {"T", "C"}, {"T", "G"}]
+snv_types_6_set = [
+    {"C", "A"},
+    {"C", "G"},
+    {"C", "T"},
+    {"T", "A"},
+    {"T", "C"},
+    {"T", "G"},
+]
 
-snv_types_96_str = (["C>A" + ":" + item for item in trinucleotides_C] +
-                    ["C>G" + ":" + item for item in trinucleotides_C] +
-                    ["C>T" + ":" + item for item in trinucleotides_C] +
-                    ["T>A" + ":" + item for item in trinucleotides_T] +
-                    ["T>C" + ":" + item for item in trinucleotides_T] +
-                    ["T>G" + ":" + item for item in trinucleotides_T])
+snv_types_96_str = (
+    ["C>A" + ":" + item for item in trinucleotides_C]
+    + ["C>G" + ":" + item for item in trinucleotides_C]
+    + ["C>T" + ":" + item for item in trinucleotides_C]
+    + ["T>A" + ":" + item for item in trinucleotides_T]
+    + ["T>C" + ":" + item for item in trinucleotides_T]
+    + ["T>G" + ":" + item for item in trinucleotides_T]
+)
 
-snv_types_96_list = ([["C>A", item] for item in trinucleotides_C] +
-                     [["C>G", item] for item in trinucleotides_C] +
-                     [["C>T", item] for item in trinucleotides_C] +
-                     [["T>A", item] for item in trinucleotides_T] +
-                     [["T>C", item] for item in trinucleotides_T] +
-                     [["T>G", item] for item in trinucleotides_T])
+snv_types_96_list = (
+    [["C>A", item] for item in trinucleotides_C]
+    + [["C>G", item] for item in trinucleotides_C]
+    + [["C>T", item] for item in trinucleotides_C]
+    + [["T>A", item] for item in trinucleotides_T]
+    + [["T>C", item] for item in trinucleotides_T]
+    + [["T>G", item] for item in trinucleotides_T]
+)
 
-SIGS_ASSOCIATED = [['SBS2','SBS13'], ['SBS17a','SBS17b'], ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']]
+SIGS_ASSOCIATED = [
+    ["SBS2", "SBS13"],
+    ["SBS17a", "SBS17b"],
+    ["SBS10a", "SBS10b", "SBS10c", "SBS10d", "SBS28"],
+]
 SIGS_ASSOCIATED_DICT = {
-    'SBS2':['SBS2', 'SBS13'],
-    'SBS13': ['SBS2', 'SBS13'],
-    'SBS17a': ['SBS17a', 'SBS17b'],
-    'SBS17b': ['SBS17a', 'SBS17b'],
-    'SBS10a': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
-    'SBS10b': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
-    'SBS10c': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
-    'SBS10d': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28'],
-    'SBS28': ['SBS10a','SBS10b','SBS10c','SBS10d','SBS28']
+    "SBS2": ["SBS2", "SBS13"],
+    "SBS13": ["SBS2", "SBS13"],
+    "SBS17a": ["SBS17a", "SBS17b"],
+    "SBS17b": ["SBS17a", "SBS17b"],
+    "SBS10a": ["SBS10a", "SBS10b", "SBS10c", "SBS10d", "SBS28"],
+    "SBS10b": ["SBS10a", "SBS10b", "SBS10c", "SBS10d", "SBS28"],
+    "SBS10c": ["SBS10a", "SBS10b", "SBS10c", "SBS10d", "SBS28"],
+    "SBS10d": ["SBS10a", "SBS10b", "SBS10c", "SBS10d", "SBS28"],
+    "SBS28": ["SBS10a", "SBS10b", "SBS10c", "SBS10d", "SBS28"],
 }
 
 # Need to update
 indel_types_83_str = [
- 'DEL.C.1.1',
- 'DEL.C.1.2',
- 'DEL.C.1.3',
- 'DEL.C.1.4',
- 'DEL.C.1.5',
- 'DEL.C.1.6+',
- 'DEL.T.1.1',
- 'DEL.T.1.2',
- 'DEL.T.1.3',
- 'DEL.T.1.4',
- 'DEL.T.1.5',
- 'DEL.T.1.6+',
- 'INS.C.1.0',
- 'INS.C.1.1',
- 'INS.C.1.2',
- 'INS.C.1.3',
- 'INS.C.1.4',
- 'INS.C.1.5+',
- 'INS.T.1.0',
- 'INS.T.1.1',
- 'INS.T.1.2',
- 'INS.T.1.3',
- 'INS.T.1.4',
- 'INS.T.1.5+',
- 'DEL.repeats.2.1',
- 'DEL.repeats.2.2',
- 'DEL.repeats.2.3',
- 'DEL.repeats.2.4',
- 'DEL.repeats.2.5',
- 'DEL.repeats.2.6+',
- 'DEL.repeats.3.1',
- 'DEL.repeats.3.2',
- 'DEL.repeats.3.3',
- 'DEL.repeats.3.4',
- 'DEL.repeats.3.5',
- 'DEL.repeats.3.6+',
- 'DEL.repeats.4.1',
- 'DEL.repeats.4.2',
- 'DEL.repeats.4.3',
- 'DEL.repeats.4.4',
- 'DEL.repeats.4.5',
- 'DEL.repeats.4.6+',
- 'DEL.repeats.5+.1',
- 'DEL.repeats.5+.2',
- 'DEL.repeats.5+.3',
- 'DEL.repeats.5+.4',
- 'DEL.repeats.5+.5',
- 'DEL.repeats.5+.6+',
- 'INS.repeats.2.0',
- 'INS.repeats.2.1',
- 'INS.repeats.2.2',
- 'INS.repeats.2.3',
- 'INS.repeats.2.4',
- 'INS.repeats.2.5+',
- 'INS.repeats.3.0',
- 'INS.repeats.3.1',
- 'INS.repeats.3.2',
- 'INS.repeats.3.3',
- 'INS.repeats.3.4',
- 'INS.repeats.3.5+',
- 'INS.repeats.4.0',
- 'INS.repeats.4.1',
- 'INS.repeats.4.2',
- 'INS.repeats.4.3',
- 'INS.repeats.4.4',
- 'INS.repeats.4.5+',
- 'INS.repeats.5+.0',
- 'INS.repeats.5+.1',
- 'INS.repeats.5+.2',
- 'INS.repeats.5+.3',
- 'INS.repeats.5+.4',
- 'INS.repeats.5+.5+',
- 'DEL.MH.2.1',
- 'DEL.MH.3.1',
- 'DEL.MH.3.2',
- 'DEL.MH.4.1',
- 'DEL.MH.4.2',
- 'DEL.MH.4.3',
- 'DEL.MH.5+.1',
- 'DEL.MH.5+.2',
- 'DEL.MH.5+.3',
- 'DEL.MH.5+.4',
- 'DEL.MH.5+.5+'
+    "DEL.C.1.1",
+    "DEL.C.1.2",
+    "DEL.C.1.3",
+    "DEL.C.1.4",
+    "DEL.C.1.5",
+    "DEL.C.1.6+",
+    "DEL.T.1.1",
+    "DEL.T.1.2",
+    "DEL.T.1.3",
+    "DEL.T.1.4",
+    "DEL.T.1.5",
+    "DEL.T.1.6+",
+    "INS.C.1.0",
+    "INS.C.1.1",
+    "INS.C.1.2",
+    "INS.C.1.3",
+    "INS.C.1.4",
+    "INS.C.1.5+",
+    "INS.T.1.0",
+    "INS.T.1.1",
+    "INS.T.1.2",
+    "INS.T.1.3",
+    "INS.T.1.4",
+    "INS.T.1.5+",
+    "DEL.repeats.2.1",
+    "DEL.repeats.2.2",
+    "DEL.repeats.2.3",
+    "DEL.repeats.2.4",
+    "DEL.repeats.2.5",
+    "DEL.repeats.2.6+",
+    "DEL.repeats.3.1",
+    "DEL.repeats.3.2",
+    "DEL.repeats.3.3",
+    "DEL.repeats.3.4",
+    "DEL.repeats.3.5",
+    "DEL.repeats.3.6+",
+    "DEL.repeats.4.1",
+    "DEL.repeats.4.2",
+    "DEL.repeats.4.3",
+    "DEL.repeats.4.4",
+    "DEL.repeats.4.5",
+    "DEL.repeats.4.6+",
+    "DEL.repeats.5+.1",
+    "DEL.repeats.5+.2",
+    "DEL.repeats.5+.3",
+    "DEL.repeats.5+.4",
+    "DEL.repeats.5+.5",
+    "DEL.repeats.5+.6+",
+    "INS.repeats.2.0",
+    "INS.repeats.2.1",
+    "INS.repeats.2.2",
+    "INS.repeats.2.3",
+    "INS.repeats.2.4",
+    "INS.repeats.2.5+",
+    "INS.repeats.3.0",
+    "INS.repeats.3.1",
+    "INS.repeats.3.2",
+    "INS.repeats.3.3",
+    "INS.repeats.3.4",
+    "INS.repeats.3.5+",
+    "INS.repeats.4.0",
+    "INS.repeats.4.1",
+    "INS.repeats.4.2",
+    "INS.repeats.4.3",
+    "INS.repeats.4.4",
+    "INS.repeats.4.5+",
+    "INS.repeats.5+.0",
+    "INS.repeats.5+.1",
+    "INS.repeats.5+.2",
+    "INS.repeats.5+.3",
+    "INS.repeats.5+.4",
+    "INS.repeats.5+.5+",
+    "DEL.MH.2.1",
+    "DEL.MH.3.1",
+    "DEL.MH.3.2",
+    "DEL.MH.4.1",
+    "DEL.MH.4.2",
+    "DEL.MH.4.3",
+    "DEL.MH.5+.1",
+    "DEL.MH.5+.2",
+    "DEL.MH.5+.3",
+    "DEL.MH.5+.4",
+    "DEL.MH.5+.5+",
 ]
 
 
 #####################
 # Utility functions #
 #####################
+
 
 def beta_divergence_deprecated(A, B, beta=1, square_root=False):
     """Beta_divergence
@@ -220,25 +240,27 @@ def beta_divergence(A, B, beta=1, square_root=False):
         # Here we must take matrix additions first and then take sum.
         # Otherwise, the separate matrix sums will be too big and the small
         # differences will be lost, and we'll get 0.0 results.
-        res = np.sum(A_data*np.log(A_data/B_data) - A_data + B_data)
+        res = np.sum(A_data * np.log(A_data / B_data) - A_data + B_data)
         res = res + np.sum(B_data_remaining)
-    elif beta == 2 or beta == 'frobenius':
-        res = np.linalg.norm(A - B, ord=None) # 2-norm for vectors and frobenius norm for matrices
+    elif beta == 2 or beta == "frobenius":
+        res = np.linalg.norm(
+            A - B, ord=None
+        )  # 2-norm for vectors and frobenius norm for matrices
         res = res**2 / 2
     else:
-        raise ValueError('Only beta = 1 and beta = 2 are implemented.')
+        raise ValueError("Only beta = 1 and beta = 2 are implemented.")
     if square_root:
-        res = np.sqrt(2*res)
+        res = np.sqrt(2 * res)
 
     return res
 
 
 def normalize_WH(W, H):
     normalization_factor = np.sum(W, 0)
-    return W/normalization_factor, H*normalization_factor[:, None]
+    return W / normalization_factor, H * normalization_factor[:, None]
 
 
-def match_catalog_pair(W1, W2, metric='cosine'):
+def match_catalog_pair(W1, W2, metric="cosine"):
     """Match a pair of signature catalogs.
 
     Notes
@@ -248,7 +270,7 @@ def match_catalog_pair(W1, W2, metric='cosine'):
     2. W2 will be reordered to match with W1.
     """
     if W1.shape != W2.shape:
-        raise ValueError('W1 and W2 must be of the same shape.')
+        raise ValueError("W1 and W2 must be of the same shape.")
 
     pdist = pairwise_distances(W1.T, W2.T, metric=metric)
     W2_reordered_indices = linear_sum_assignment(pdist)[1]
@@ -256,41 +278,42 @@ def match_catalog_pair(W1, W2, metric='cosine'):
 
 
 def bootstrap_count_matrix(X):
-    #n_features, n_samples = X.shape
+    # n_features, n_samples = X.shape
     X_bootstrapped = []
     for x in X.T:
         N = int(round(np.sum(x)))
-        p = np.ravel(x/np.sum(x))
+        p = np.ravel(x / np.sum(x))
         X_bootstrapped.append(np.random.multinomial(N, p))
-        #indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
-        #X_bootstrapped.append([np.sum(indices == i)
+        # indices = np.random.choice(n_features, size=N, replace=True, p=x/np.sum(x))
+        # X_bootstrapped.append([np.sum(indices == i)
         #                       for i in range(0, n_features)])
     X_bootstrapped = np.array(X_bootstrapped).T
     return X_bootstrapped
 
 
-def simulate_count_matrix(W, H, method='multinomial'):
-    #n_features, n_components = W.shape
-    #_, n_samples = H.shape
+def simulate_count_matrix(W, H, method="multinomial"):
+    # n_features, n_components = W.shape
+    # _, n_samples = H.shape
 
     # Just in case W and H are not properly normalized
-    #W, H = normalize_WH(W, H)
+    # W, H = normalize_WH(W, H)
 
-    if method == 'multinomial':
-        #X_simulated = []
-        #for h in H.T:
+    if method == "multinomial":
+        # X_simulated = []
+        # for h in H.T:
         #    x = np.zeros(n_features, dtype=int)
         #    for i in range(0, n_components):
         #        N = int(round(h[i]))
         #        indices = np.random.choice(n_features, size=N, replace=True, p=W[:, i])
         #        x += np.array([np.sum(indices == j) for j in range(0, n_features)])
         #    X_simulated.append(x)
-        #X_simulated = np.array(X_simulated).T
+        # X_simulated = np.array(X_simulated).T
         X_simulated = bootstrap_count_matrix(W @ H)
     else:
         raise ValueError(
-            'Invalid method parameter: got %r instead of one of %r' %
-            (method, {'multinomial'}))
+            "Invalid method parameter: got %r instead of one of %r"
+            % (method, {"multinomial"})
+        )
 
     return X_simulated
 
@@ -298,12 +321,16 @@ def simulate_count_matrix(W, H, method='multinomial'):
 def _samplewise_error(X, X_reconstructed, beta=1, square_root=False):
     errors = []
     for x, x_reconstructed in zip(X.T, X_reconstructed.T):
-        errors.append(beta_divergence(x, x_reconstructed, beta=beta, square_root=square_root))
+        errors.append(
+            beta_divergence(x, x_reconstructed, beta=beta, square_root=square_root)
+        )
     errors = np.array(errors)
     return errors
 
 
-def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1, include_top=True):
+def match_signature_to_catalog(
+    w, W_catalog, thresh=0.99, min_contribution=0.1, include_top=True
+):
     """Match a single signature to possibly multiple signatures in the catalog.
 
     Parameters
@@ -358,15 +385,17 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     ###################################################
     ### Otherwise, consider doublets
     # First, construct the combinations of signatures to be tested.
-    sigs = range(0, n_sigs) # Indices of all signatures in the catalog.
-    top = data[0][0] # Index of the top matched signature.
-    combs = [] # All signature combinations to be tested.
+    sigs = range(0, n_sigs)  # Indices of all signatures in the catalog.
+    top = data[0][0]  # Index of the top matched signature.
+    combs = []  # All signature combinations to be tested.
     if include_top:
-        combs.extend([(top,)]) # First, include singlets
-        sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
+        combs.extend([(top,)])  # First, include singlets
+        sigs_notop = [
+            sig for sig in sigs if sig != top
+        ]  # Indices of all signatures excluding the top matched signature.
         combs.extend([(top, sig) for sig in sigs_notop])
     else:
-        combs.extend([(sig,) for sig in sigs]) # First, include singlets
+        combs.extend([(sig,) for sig in sigs])  # First, include singlets
         combs.extend(list(itertools.combinations(sigs, 2)))
     # Then, perform NNLS on all combinations to be tested, and select the best combination based on residual error.
     data = []
@@ -388,10 +417,14 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     ##################### Triplets ####################
     ###################################################
     ### Otherwise, consider triplets
-    #combs = []
+    # combs = []
     if include_top:
-        sigs_notop = [sig for sig in sigs if sig != top] # Indices of all signatures excluding the top matched signature.
-        combs.extend([(top,) + item for item in list(itertools.combinations(sigs_notop, 2))])
+        sigs_notop = [
+            sig for sig in sigs if sig != top
+        ]  # Indices of all signatures excluding the top matched signature.
+        combs.extend(
+            [(top,) + item for item in list(itertools.combinations(sigs_notop, 2))]
+        )
     else:
         combs.extend(list(itertools.combinations(sigs, 3)))
     data = []
@@ -409,14 +442,12 @@ def match_signature_to_catalog(w, W_catalog, thresh=0.99, min_contribution = 0.1
     return (), np.nan, None
 
 
+def match_signature_to_catalog_nnls_sparse(
+    w, W_catalog, method="likelihood_bidirectional", thresh1=0.001, thresh2=None
+):
 
-def match_signature_to_catalog_nnls_sparse(w, W_catalog, method='likelihood_bidirectional',
-                                            thresh1 = 0.001, thresh2 = None):
-
-    sparse_method = SparseNNLS(method = method,
-                               thresh1 = thresh1,
-                               thresh2 = thresh2)
-    sparse_method.fit(X= w, W = W_catalog)
+    sparse_method = SparseNNLS(method=method, thresh1=thresh1, thresh2=thresh2)
+    sparse_method.fit(X=w, W=W_catalog)
     h = np.transpose(np.array(sparse_method.H))
     match = np.arange(0, W_catalog.shape[1])[np.where(h > 0)[1]]
     coef, _ = sp.optimize.nnls(W_catalog[:, match], w)
@@ -424,17 +455,17 @@ def match_signature_to_catalog_nnls_sparse(w, W_catalog, method='likelihood_bidi
     return tuple(match), cos, coef
 
 
-def tag_similar_signatures(W, metric = 'cosine'):
-    pdist = pairwise_distances(W.T, metric = metric)
+def tag_similar_signatures(W, metric="cosine"):
+    pdist = pairwise_distances(W.T, metric=metric)
     n_signatures = W.shape[1]
     similar_signatures = []
-    for i in  range(0, n_signatures):
+    for i in range(0, n_signatures):
         inds = np.where(pdist[i, :] < 0.05)
         similar_signatures[i] = inds
     return similar_signatures
 
 
-def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
+def differential_tail_test(a, b, percentile=90, alternative="two-sided"):
     """Test if distribution tails are different (pubmed: 18655712)
 
     Parameters
@@ -453,16 +484,18 @@ def differential_tail_test(a, b, percentile=90, alternative='two-sided'):
     a = np.array(a)
     b = np.array(b)
     if len(a) != len(b):
-        warnings.warn('Lengths of a and b are different. The differential tail test could lose power.',
-                      UserWarning)
+        warnings.warn(
+            "Lengths of a and b are different. The differential tail test could lose power.",
+            UserWarning,
+        )
     comb = np.concatenate([a, b])
     thresh = np.percentile(comb, percentile)
     za = a * (a > thresh)
     zb = b * (b > thresh)
     # If za and zb contain identical values, e.g., both za and zb are all zeros.
-    #if len(za) == len(zb) and (np.sort(za) == np.sort(zb)).all():
+    # if len(za) == len(zb) and (np.sort(za) == np.sort(zb)).all():
     if len(set(np.concatenate((za, zb)))) == 1:
-        if alternative == 'two-sided':
+        if alternative == "two-sided":
             return np.nan, 1.0
         else:
             return np.nan, 0.5
@@ -507,10 +540,12 @@ def parallelotope_volume(X):
     m, n = X.shape
     r = np.linalg.matrix_rank(X)
     if r != m:
-        warnings.warn("Rank (= %d) of the input matrix is not equal to the "
-                      "row number (= %d). Thus rows of the input matrix are "
-                      "not linear independent" % (r, m),
-                      UserWarning)
+        warnings.warn(
+            "Rank (= %d) of the input matrix is not equal to the "
+            "row number (= %d). Thus rows of the input matrix are "
+            "not linear independent" % (r, m),
+            UserWarning,
+        )
         return 0
     else:
         if m == n:
@@ -519,9 +554,7 @@ def parallelotope_volume(X):
             v = np.abs(
                 np.linalg.det(
                     normalize(
-                        np.concatenate(
-                            (X, sp.linalg.null_space(X).T), axis=0
-                        ), axis=1
+                        np.concatenate((X, sp.linalg.null_space(X).T), axis=0), axis=1
                     )
                 )
             )
@@ -543,7 +576,9 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
     """
     if confusion_matrix is None:
         if P is None or PP is None or All is None:
-            raise ValueError('When confusion matrix is not provided, P, PP, and All must be provided.')
+            raise ValueError(
+                "When confusion matrix is not provided, P, PP, and All must be provided."
+            )
         P = set(P)
         PP = set(PP)
         All = set(All)
@@ -564,10 +599,12 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
         confusion_matrix = np.array([[nTP, nFN], [nFP, nTN]])
     else:
         if P is not None or PP is not None or All is not None:
-            warnings.warn('Confusion matrix is provided. The provided P, PP, or All are ignored.',
-                          UserWarning)
+            warnings.warn(
+                "Confusion matrix is provided. The provided P, PP, or All are ignored.",
+                UserWarning,
+            )
         if confusion_matrix.shape != (2, 2):
-            raise ValueError('Confusion matrix is not of the correct shape.')
+            raise ValueError("Confusion matrix is not of the correct shape.")
         nTP = confusion_matrix[0, 0]
         nFN = confusion_matrix[0, 1]
         nFP = confusion_matrix[1, 0]
@@ -587,7 +624,7 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
         "TN": nTN,
         "FP": nFP,
         "FN": nFN,
-        "ConfusionMatrix": confusion_matrix
+        "ConfusionMatrix": confusion_matrix,
     }
 
     # Power = sensitivity = recall = true positive rate = TP/P = TP/(TP + FN)
@@ -597,65 +634,73 @@ def classification_statistics(confusion_matrix=None, P=None, PP=None, All=None):
         statistics["Recall"] = np.nan
         statistics["TPR"] = np.nan
     else:
-        statistics["Power"] = nTP/nP
-        statistics["Sensitivity"] = nTP/nP
-        statistics["Recall"] = nTP/nP
-        statistics["TPR"] = nTP/nP
+        statistics["Power"] = nTP / nP
+        statistics["Sensitivity"] = nTP / nP
+        statistics["Recall"] = nTP / nP
+        statistics["TPR"] = nTP / nP
     # FDR = FP/(FP + TP)
     if nFP + nTP == 0:
         statistics["FDR"] = np.nan
     else:
-        statistics["FDR"] = nFP/(nFP + nTP)
+        statistics["FDR"] = nFP / (nFP + nTP)
     # precision = TP/(TP + FP) = 1 - FDR
     statistics["Precision"] = 1 - statistics["FDR"]
     # False positive rate = FP/N = FP/(FP + TN)
     if nN == 0:
         statistics["FPR"] = np.nan
     else:
-        statistics["FPR"] = nFP/nN
+        statistics["FPR"] = nFP / nN
     # Specificity = true negative rate = selectivity = TN/N
     if nN == 0:
         statistics["Specificity"] = np.nan
         statistics["TNR"] = np.nan
     else:
-        statistics["Specificity"] = nTN/nN
-        statistics["TNR"] = nTN/nN
+        statistics["Specificity"] = nTN / nN
+        statistics["TNR"] = nTN / nN
     # False negative rate = FN/P = 1 - TPR
-    statistics["FNR"] = 1 - statistics['TPR']
+    statistics["FNR"] = 1 - statistics["TPR"]
     # Accuracy = (TP + TN)/(P + N)
     if nP + nN == 0:
         statistics["Accuracy"] = np.nan
     else:
-        statistics["Accuracy"] = (nTP + nTN)/(nP + nN)
+        statistics["Accuracy"] = (nTP + nTN) / (nP + nN)
     # Balanced accuracy = (TPR + TNR)/2
-    statistics['BAcc'] = (statistics['TPR'] + statistics['TNR'])/2
+    statistics["BAcc"] = (statistics["TPR"] + statistics["TNR"]) / 2
     # F1 score = 2 * precision * recall / (precision + recall)
-    if statistics['Precision'] + statistics['Recall'] > 0:
-        statistics['F1'] = 2 * statistics['Precision'] * statistics['Recall'] / (statistics['Precision'] + statistics['Recall'])
+    if statistics["Precision"] + statistics["Recall"] > 0:
+        statistics["F1"] = (
+            2
+            * statistics["Precision"]
+            * statistics["Recall"]
+            / (statistics["Precision"] + statistics["Recall"])
+        )
     else:
-        statistics['F1'] = np.nan
+        statistics["F1"] = np.nan
     # Mathew's correlation coefficient
     # https://bmcgenomics.biomedcentral.com/track/pdf/10.1186/s12864-019-6413-7.pdf
-    if np.sum(statistics['ConfusionMatrix'] == 0) == 4:
-        statistics['MCC'] = np.nan
-    elif np.sum(statistics['ConfusionMatrix'] == 0) == 3:
+    if np.sum(statistics["ConfusionMatrix"] == 0) == 4:
+        statistics["MCC"] = np.nan
+    elif np.sum(statistics["ConfusionMatrix"] == 0) == 3:
         if nTP != 0 or nTN != 0:
-            statistics['MCC'] = 1
+            statistics["MCC"] = 1
         elif nFP != 0 or nFN != 0:
-            statistics['MCC'] = -1
-        else: # Won't happen
-            statistics['MCC'] = np.nan
+            statistics["MCC"] = -1
+        else:  # Won't happen
+            statistics["MCC"] = np.nan
     else:
-        if (nTP + nFP)*(nTP + nFN)*(nTN + nFP)*(nTN + nFN) == 0:
-            statistics['MCC'] = 0
+        if (nTP + nFP) * (nTP + nFN) * (nTN + nFP) * (nTN + nFN) == 0:
+            statistics["MCC"] = 0
         else:
             # Conversiton to fload is necessary when the integer is too large and out of range:
             # https://stackoverflow.com/questions/47123035/python-error-when-calling-numpy-from-class-method-with-map
-            statistics['MCC'] = (nTP * nTN - nFP * nFN)/np.sqrt(float((nTP + nFP)*(nTP + nFN)*(nTN + nFP)*(nTN + nFN)))
+            statistics["MCC"] = (nTP * nTN - nFP * nFN) / np.sqrt(
+                float((nTP + nFP) * (nTP + nFN) * (nTN + nFP) * (nTN + nFN))
+            )
     # Normalized MCC
-    statistics['nMCC'] = (statistics['MCC'] + 1)/2
+    statistics["nMCC"] = (statistics["MCC"] + 1) / 2
 
     return statistics
+
 
 def get_sig_indices_associated(signatures, signatures_catalog=None):
     """
@@ -678,7 +723,9 @@ def get_sig_indices_associated(signatures, signatures_catalog=None):
             signatures = np.append(signatures, missing_item)
 
     if signatures_catalog is not None:
-        signatures = [item for index,item in enumerate(signatures_catalog) if item in signatures]
+        signatures = [
+            item for index, item in enumerate(signatures_catalog) if item in signatures
+        ]
         signatures = np.array(signatures)
 
     indices_associated = []
