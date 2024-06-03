@@ -1,15 +1,9 @@
-"""NNLS"""
+"""Non-negative least squares (NNLS) to calculate the signature exposures"""
 
 import numpy as np
-import scipy as sp
+from scipy import optimize
 
 
-def nnls(X, W):
-    """Perform NNLS to calculate signature exposures."""
-    H = []
-    for x in X.T:
-        h, _ = sp.optimize.nnls(W, x)
-        H.append(h)
-    H = np.array(H)
-    H = H.T
+def nnls(X: np.ndarray, W: np.ndarray) -> np.ndarray:
+    H = np.array([optimize.nnls(W, x)[0] for x in X.T]).T
     return H
