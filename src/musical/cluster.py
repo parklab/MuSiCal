@@ -19,27 +19,29 @@ from sklearn.preprocessing import normalize, scale
 from .plot import colorPaletteMathematica97
 
 
-def _within_cluster_variation(d_square_form, cluster_membership):
-    """Within cluster variation.
-
-    Cf. https://statweb.stanford.edu/~gwalther/gap
-        (Estimating the number of clusters in a data set via the gap statistic by Tibshirani et al.)
-
-    Parameters:
-    ----------
-    d_square_form : array-like
-        Squared form pairwise distance matrix.
-
-    cluster_membership : array-like
-        Cluster membership.
+def _within_cluster_variation(
+    d_square_form: np.ndarray, cluster_membership: np.ndarray
+) -> float:
     """
-    cluster_indices = sorted(list(set(cluster_membership)))
-    Ds = []
-    for i in cluster_indices:
-        index = cluster_membership == i
-        d_sub = d_square_form[np.ix_(index, index)]
-        Ds.append(np.sum(d_sub) / 2 / d_sub.shape[0])  # D_r / (2 n_r)
-    W = np.sum(Ds)
+    Within cluster variation, see https://statweb.stanford.edu/~gwalther/gap
+    (Estimating the number of clusters in a data set via the gap statistic by Tibshirani et al.)
+
+    Inputs:
+    -------
+    d_square_form : np.array
+        Squared form pairwise distance matrix of size (n_samples, n_samples).
+
+    cluster_membership : np.array
+        Cluster membership of all samples.
+    """
+    W = 0.0
+
+    for i in np.unique(cluster_membership):
+        cluster = cluster_membership == i
+        size_cluster = np.sum(cluster)
+        d_restricted = d_square_form[np.ix_(cluster, cluster)]
+        W += 0.5 * np.sum(d_restricted) / size_cluster
+
     return W
 
 
