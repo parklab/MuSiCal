@@ -4,17 +4,14 @@ import warnings
 from operator import itemgetter
 
 import matplotlib as mpl
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 import scipy as sp
 import scipy.cluster.hierarchy as sch
-import scipy.stats as stats
 import seaborn as sns
 from sklearn.metrics import silhouette_samples
-from sklearn.preprocessing import normalize, scale
+from sklearn.preprocessing import scale
 
 from .plot import colorPaletteMathematica97
 
