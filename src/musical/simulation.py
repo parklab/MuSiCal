@@ -4,7 +4,6 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import scipy as sp
 
 from .utils import simulate_count_matrix
 

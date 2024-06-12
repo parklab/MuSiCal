@@ -1,6 +1,4 @@
 import numpy as np
-import scipy as sp
-import scipy.cluster.hierarchy as sch
 import scipy.stats as stats
 from sklearn.preprocessing import normalize
 

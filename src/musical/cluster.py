@@ -1,7 +1,6 @@
 """Clustering related functions"""
 
 import warnings
-from operator import itemgetter
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt

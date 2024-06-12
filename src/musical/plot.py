@@ -1,7 +1,6 @@
 """Plot tools for mutational signature analysis."""
 
 import matplotlib as mpl
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np

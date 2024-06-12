@@ -13,8 +13,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import scipy as sp
-import scipy.stats as stats
-from sklearn.metrics import pairwise_distances
 from sklearn.preprocessing import normalize
 
 

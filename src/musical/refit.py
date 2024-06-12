@@ -13,16 +13,8 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 
-from .catalog import load_catalog
-from .nnls import nnls
 from .nnls_sparse import SparseNNLS, SparseNNLSGrid
-from .utils import (
-    SIGS_ASSOCIATED,
-    SIGS_ASSOCIATED_DICT,
-    beta_divergence,
-    get_sig_indices_associated,
-    match_signature_to_catalog_nnls_sparse,
-)
+from .utils import SIGS_ASSOCIATED_DICT, get_sig_indices_associated
 
 
 def refit(X, W, method="likelihood_bidirectional", thresh=None, connected_sigs=False):
