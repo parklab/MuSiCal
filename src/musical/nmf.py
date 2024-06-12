@@ -70,8 +70,6 @@ class NMF:
             verbose=self.verbose,
             verbosity_freq=self.conv_test_freq,
         )
-        W = model.asignatures.X.T
-        self._W, self.W = W, W
-        H = model.adata.obsm["exposures"].T
-        self._H, self.H = H, H
+        self.W = model.asignatures.X.T
+        self.H = model.adata.obsm["exposures"].T
         return self

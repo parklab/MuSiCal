@@ -859,8 +859,6 @@ class DenovoSig:
     def _run_jobs(self):
         self.W_raw_all = {}  # Save all raw results
         self.H_raw_all = {}  # Save all raw results
-        self._W_raw_all = {}
-        self._H_raw_all = {}
         self.lambda_tilde_all = {}  # Save lambda_tilde's used for each mvNMF run
         start = time.time()
         for n_components in self.n_components_all:
@@ -951,8 +949,6 @@ class DenovoSig:
             self.H_raw_all[n_components] = [
                 model.H for model in models
             ]  # Save all raw results
-            self._W_raw_all[n_components] = [model._W for model in models]
-            self._H_raw_all[n_components] = [model._H for model in models]
             # Save lambda_tilde's used for each mvNMF run
             if self.method == "nmf":
                 self.lambda_tilde_all[n_components] = None
