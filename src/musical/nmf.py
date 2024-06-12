@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import anndata as ad
 import numpy as np
 import salamander as sal
