@@ -5,15 +5,12 @@ TODO:
 2. We need better structuring of the class. E.g., use @ property to protect some attributes.
 """
 
-import copy
 import multiprocessing
 import os
 import time
 import warnings
 from operator import itemgetter
 
-import matplotlib as mpl
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
@@ -25,7 +22,7 @@ import seaborn as sns
 from sklearn.metrics import silhouette_samples
 from sklearn.preprocessing import normalize
 
-from .cluster import OptimalK, hierarchical_cluster
+from .cluster import OptimalK
 from .mvnmf import MVNMF, wrappedMVNMF
 from .nmf import NMF
 from .nnls import nnls
@@ -650,7 +647,6 @@ class DenovoSig:
         max_iter=100000,
         min_iter=10000,
         conv_test_freq=1000,
-        conv_test_baseline="min-iter",
         tol=1e-8,
         ncpu=1,
         verbose=0,
@@ -672,7 +668,6 @@ class DenovoSig:
         mvnmf_hyperparameter_method="single",  # single or all or fixed
         mvnmf_lambda_tilde_grid=None,
         mvnmf_delta=1.0,
-        mvnmf_gamma=1.0,
         mvnmf_pthresh=0.05,
         mvnmf_noise=False,
     ):
@@ -709,7 +704,6 @@ class DenovoSig:
         self.max_iter = max_iter
         self.min_iter = min_iter
         self.conv_test_freq = conv_test_freq
-        self.conv_test_baseline = conv_test_baseline
         self.tol = tol
         self.verbose = verbose
         if ncpu is None:
@@ -735,7 +729,6 @@ class DenovoSig:
         self.mvnmf_hyperparameter_method = mvnmf_hyperparameter_method
         self.mvnmf_lambda_tilde_grid = mvnmf_lambda_tilde_grid
         self.mvnmf_delta = mvnmf_delta
-        self.mvnmf_gamma = mvnmf_gamma
         self.mvnmf_pthresh = mvnmf_pthresh
         self.mvnmf_noise = mvnmf_noise
 
@@ -762,7 +755,6 @@ class DenovoSig:
                 min_iter=self.min_iter,
                 tol=self.tol,
                 conv_test_freq=self.conv_test_freq,
-                conv_test_baseline=self.conv_test_baseline,
             )
             model.fit()
             if self.verbose:
@@ -790,11 +782,9 @@ class DenovoSig:
                     min_iter=self.min_iter,
                     tol=self.tol,
                     conv_test_freq=self.conv_test_freq,
-                    conv_test_baseline=self.conv_test_baseline,
                     lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
                     pthresh=self.mvnmf_pthresh,
                     delta=self.mvnmf_delta,
-                    gamma=self.mvnmf_gamma,
                     ncpu=1,
                     noise=self.mvnmf_noise,
                 )
@@ -824,10 +814,8 @@ class DenovoSig:
                     min_iter=self.min_iter,
                     tol=self.tol,
                     conv_test_freq=self.conv_test_freq,
-                    conv_test_baseline=self.conv_test_baseline,
                     lambda_tilde=self.mvnmf_lambda_tilde_grid,
                     delta=self.mvnmf_delta,
-                    gamma=self.mvnmf_gamma,
                 )
                 model.fit()
                 if self.verbose:
@@ -854,10 +842,8 @@ class DenovoSig:
                     min_iter=self.min_iter,
                     tol=self.tol,
                     conv_test_freq=self.conv_test_freq,
-                    conv_test_baseline=self.conv_test_baseline,
                     lambda_tilde=lambda_tilde,
                     delta=self.mvnmf_delta,
-                    gamma=self.mvnmf_gamma,
                 )
                 model.fit()
                 if self.verbose:
@@ -922,11 +908,9 @@ class DenovoSig:
                         min_iter=self.min_iter,
                         tol=self.tol,
                         conv_test_freq=self.conv_test_freq,
-                        conv_test_baseline=self.conv_test_baseline,
                         lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
                         pthresh=self.mvnmf_pthresh,
                         delta=self.mvnmf_delta,
-                        gamma=self.mvnmf_gamma,
                         ncpu=self.ncpu,
                         noise=self.mvnmf_noise,
                     )
@@ -1464,7 +1448,6 @@ class DenovoSig:
             max_iter=self.max_iter,
             min_iter=self.min_iter,
             conv_test_freq=self.conv_test_freq,
-            conv_test_baseline=self.conv_test_baseline,
             tol=self.tol,
             ncpu=self.ncpu,
             verbose=self.verbose,
@@ -1485,7 +1468,6 @@ class DenovoSig:
             mvnmf_hyperparameter_method=self.mvnmf_hyperparameter_method,
             mvnmf_lambda_tilde_grid=self.mvnmf_lambda_tilde_grid,
             mvnmf_delta=self.mvnmf_delta,
-            mvnmf_gamma=self.mvnmf_gamma,
             mvnmf_pthresh=self.mvnmf_pthresh,
             mvnmf_noise=self.mvnmf_noise,
         )
