@@ -145,7 +145,7 @@ class wrappedMVNMF:
         self,
         X: np.ndarray,
         n_components: int,
-        lambda_tilde_grid: np.ndarray = LAMBDA_TILDE_GRID,
+        lambda_tilde_grid: np.ndarray | None = None,
         pthresh: float = 0.05,
         init: str = "random",
         init_W_custom: np.ndarray | None = None,
@@ -162,7 +162,11 @@ class wrappedMVNMF:
         self.X = np.array(X).astype(float)
         self.n_features, self.n_samples = self.X.shape
         self.n_components = n_components
+
+        if lambda_tilde_grid is None:
+            lambda_tilde_grid = LAMBDA_TILDE_GRID
         self.lambda_tilde_grid = lambda_tilde_grid
+
         self.pthresh = pthresh
         self.init = init
 
