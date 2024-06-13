@@ -13,6 +13,7 @@ from .refit import assign, assign_grid
 from .simulation import simulate_LDA
 from .utils import beta_divergence
 
+__version__ = "1.1.0"
 __all__ = [
     "beta_divergence",
     "sigplot_bar",

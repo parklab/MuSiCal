@@ -1,15 +1,14 @@
 [tool.poetry]
 name = "musical"
-version = "1.0.0"
+version = "1.1.0"
 description = "MuSiCal is a comprehensive toolkit for mutational signature analysis"
-license = "MIT"
-authors = ["Hu Jin, Doga Gulhan, Benedikt Geiger"]
+authors = ["Hu Jin, Doga Gulhan"]
 maintainers = [
     "Hu Jin <hu_jin@hms.harvard.edu>",
+    "Doga Gulhan <doga_gulhan@hms.harvard.edu>",
     "Benedikt Geiger <benedikt_geiger@hms.harvard.edu>",
 ]
 packages = [{ include = "musical", from = "src" }]
-
 
 readme = "README.md"
 
