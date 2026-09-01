@@ -269,6 +269,22 @@ def bootstrap_count_matrix(X):
     return X_bootstrapped
 
 
+def rescale_count_matrix(X, tmb_factor):
+    """Rescale a count matrix to a target mean tumor mutational burden.
+
+    The target mean TMB is tmb_factor * n_features. For example, for SBS96
+    signatures n_features is 96, so the default tmb_factor of 10 corresponds to a
+    target mean TMB of 960. Values between 10 and 40 are typical. Relative
+    differences in TMB between samples are preserved.
+    """
+    X = np.array(X).astype(float)
+    n_features = X.shape[0]
+    mean_tmb = X.sum(0).mean()
+    if mean_tmb <= 0:
+        raise ValueError('Cannot rescale X. The mean total mutation burden is 0.')
+    return X * (tmb_factor * n_features) / mean_tmb
+
+
 def simulate_count_matrix(W, H, method='multinomial'):
     #n_features, n_components = W.shape
     #_, n_samples = H.shape

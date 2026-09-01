@@ -5,6 +5,7 @@ from .utils import beta_divergence
 from .plot import sigplot_bar, plot_silhouettes
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
+from .cornet import Cornet
 from .denovo import DenovoSig
 from .catalog import load_catalog
 from .preprocessing import remove_samples_based_on_gini, identify_distinct_cluster
@@ -19,6 +20,7 @@ __all__ = ['beta_divergence',
            'NMF',
            'MVNMF',
            'wrappedMVNMF',
+           'Cornet',
            'DenovoSig',
            'load_catalog',
            'remove_samples_based_on_gini',

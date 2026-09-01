@@ -27,10 +27,25 @@ import copy
 
 from .nmf import NMF
 from .mvnmf import MVNMF, wrappedMVNMF
-from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test, simulate_count_matrix
+from .cornet import Cornet
+from .utils import bootstrap_count_matrix, beta_divergence, _samplewise_error, match_catalog_pair, differential_tail_test, simulate_count_matrix, rescale_count_matrix
 from .nnls import nnls
 from .refit import assign, assign_grid
 from .cluster import OptimalK, hierarchical_cluster
+
+
+METHODS = ['nmf', 'mvnmf', 'cornet']
+
+# Algorithm specific default values. When the corresponding argument of DenovoSig
+# is left as None, the default for the selected method is used. This way the same
+# argument names apply to all algorithms, while the defaults remain appropriate for
+# each of them. Note that Cornet converges in far fewer iterations than NMF and
+# mvNMF, and is tested for convergence much more frequently.
+_DEFAULT_PARAMS = {
+    'nmf':    {'max_iter': 100000, 'min_iter': 10000, 'conv_test_freq': 1000, 'tol': 1e-8, 'tmb_factor': None},
+    'mvnmf':  {'max_iter': 100000, 'min_iter': 10000, 'conv_test_freq': 1000, 'tol': 1e-8, 'tmb_factor': None},
+    'cornet': {'max_iter': 20000,  'min_iter': 2000,  'conv_test_freq': 10,   'tol': 1e-8, 'tmb_factor': 10.0}
+}
 
 
 def _filter_results(X, Ws, Hs, method='error_distribution', thresh=0.05, percentile=90):
@@ -508,12 +523,13 @@ class DenovoSig:
                  method='mvnmf',
                  normalize_X=False, # whether or not to normalize the input matrix for NMF/mvNMF
                  bootstrap=True,
+                 tmb_factor='auto', # rescale the input matrix to a target mean TMB of tmb_factor*n_features. None disables it. 'auto' uses the default of the selected method
                  n_replicates=20,
-                 max_iter=100000,
-                 min_iter=10000,
-                 conv_test_freq=1000,
+                 max_iter=None, # None means the default of the selected method is used
+                 min_iter=None,
+                 conv_test_freq=None,
                  conv_test_baseline='min-iter',
-                 tol=1e-8,
+                 tol=None,
                  ncpu=1,
                  verbose=0,
                  # Specific for result filtering:
@@ -536,7 +552,9 @@ class DenovoSig:
                  mvnmf_delta=1.0,
                  mvnmf_gamma=1.0,
                  mvnmf_pthresh=0.05,
-                 mvnmf_noise=False
+                 mvnmf_noise=False,
+                 # cornet specific:
+                 cornet_dim_embeddings=None
                 ):
         if (type(X) != np.ndarray) or (not np.issubdtype(X.dtype, np.floating)):
             self.X = np.array(X).astype(float)
@@ -560,15 +578,20 @@ class DenovoSig:
         self.max_n_components = max_n_components
         self.n_components_all = np.arange(self.min_n_components, self.max_n_components + 1)
         self.init = init
+        if method not in METHODS:
+            raise ValueError('Invalid method. Valid options are %r.' % (METHODS,))
         self.method = method
         self.normalize_X = normalize_X
         self.bootstrap = bootstrap
         self.n_replicates = n_replicates
-        self.max_iter = max_iter
-        self.min_iter = min_iter
-        self.conv_test_freq = conv_test_freq
+        # Resolve the parameters whose defaults depend on the selected method.
+        defaults = _DEFAULT_PARAMS[method]
+        self.max_iter = defaults['max_iter'] if max_iter is None else max_iter
+        self.min_iter = defaults['min_iter'] if min_iter is None else min_iter
+        self.conv_test_freq = defaults['conv_test_freq'] if conv_test_freq is None else conv_test_freq
+        self.tol = defaults['tol'] if tol is None else tol
+        self.tmb_factor = defaults['tmb_factor'] if tmb_factor == 'auto' else tmb_factor
         self.conv_test_baseline = conv_test_baseline
-        self.tol = tol
         self.verbose=verbose
         if ncpu is None:
             ncpu = os.cpu_count()
@@ -594,6 +617,24 @@ class DenovoSig:
         self.mvnmf_gamma = mvnmf_gamma
         self.mvnmf_pthresh = mvnmf_pthresh
         self.mvnmf_noise = mvnmf_noise
+        # cornet specific
+        self.cornet_dim_embeddings = cornet_dim_embeddings
+
+    def _preprocess_X(self):
+        """Prepare the input matrix for a single run.
+
+        Bootstrapping, normalization and TMB rescaling are all optional. TMB
+        rescaling is on by default for cornet only, see _DEFAULT_PARAMS.
+        """
+        if self.bootstrap:
+            X_in = bootstrap_count_matrix(self.X)
+        else:
+            X_in = self.X
+        if self.normalize_X:
+            X_in = normalize(X_in, norm='l1', axis=0)
+        if self.tmb_factor is not None:
+            X_in = rescale_count_matrix(X_in, self.tmb_factor)
+        return X_in
 
     def _job(self, parameters):
         """parameters = (index_replicate, n_components, lambda_tilde)
@@ -604,12 +645,7 @@ class DenovoSig:
         index_replicate, n_components, lambda_tilde = parameters
         np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
         if self.method == 'nmf':
-            if self.bootstrap:
-                X_in = bootstrap_count_matrix(self.X)
-            else:
-                X_in = self.X
-            if self.normalize_X:
-                X_in = normalize(X_in, norm='l1', axis=0)
+            X_in = self._preprocess_X()
             model = NMF(X_in,
                         n_components,
                         init=self.init,
@@ -625,12 +661,7 @@ class DenovoSig:
             return model
         elif self.method == 'mvnmf':
             if self.mvnmf_hyperparameter_method == 'all':
-                if self.bootstrap:
-                    X_in = bootstrap_count_matrix(self.X)
-                else:
-                    X_in = self.X
-                if self.normalize_X:
-                    X_in = normalize(X_in, norm='l1', axis=0)
+                X_in = self._preprocess_X()
                 model = wrappedMVNMF(X_in,
                                      n_components,
                                      init=self.init,
@@ -652,12 +683,7 @@ class DenovoSig:
                     print('Selected lambda_tilde = %.3g ' % model.lambda_tilde)
                 return model
             elif self.mvnmf_hyperparameter_method == 'fixed':
-                if self.bootstrap:
-                    X_in = bootstrap_count_matrix(self.X)
-                else:
-                    X_in = self.X
-                if self.normalize_X:
-                    X_in = normalize(X_in, norm='l1', axis=0)
+                X_in = self._preprocess_X()
                 model = MVNMF(X_in,
                               n_components,
                               init=self.init,
@@ -675,12 +701,7 @@ class DenovoSig:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                 return model
             elif self.mvnmf_hyperparameter_method == 'single':
-                if self.bootstrap:
-                    X_in = bootstrap_count_matrix(self.X)
-                else:
-                    X_in = self.X
-                if self.normalize_X:
-                    X_in = normalize(X_in, norm='l1', axis=0)
+                X_in = self._preprocess_X()
                 model = MVNMF(X_in,
                               n_components,
                               init=self.init,
@@ -697,6 +718,23 @@ class DenovoSig:
                 if self.verbose:
                     print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
                 return model
+        elif self.method == 'cornet':
+            X_in = self._preprocess_X()
+            model = Cornet(X_in,
+                           n_components,
+                           init=self.init,
+                           dim_embeddings=self.cornet_dim_embeddings,
+                           max_iter=self.max_iter,
+                           min_iter=self.min_iter,
+                           tol=self.tol,
+                           conv_test_freq=self.conv_test_freq,
+                           X_raw=self.X,
+                           seed=np.random.randint(0, 2**32 - 1)
+                          )
+            model.fit()
+            if self.verbose:
+                print('n_components = ' + str(n_components) + ', replicate ' + str(index_replicate) + ' finished.')
+            return model
 
     def _run_jobs(self):
         self.W_raw_all = {} # Save all raw results
@@ -708,7 +746,7 @@ class DenovoSig:
         for n_components in self.n_components_all:
             if self.verbose:
                 print('Extracting signatures for n_components = ' + str(n_components) + '..................')
-            if self.method == 'nmf':
+            if self.method in ['nmf', 'cornet']:
                 parameters = [(index_replicate, n_components, None) for index_replicate in range(0, self.n_replicates)]
                 # Note that after workers are created, modifications of global variables won't be seen by the workers.
                 # Therefore, any modifications must be made before the workers are created.
@@ -726,12 +764,7 @@ class DenovoSig:
                     workers.join()
                 elif self.mvnmf_hyperparameter_method == 'single':
                     # Run first model, with hyperparameter selection
-                    if self.bootstrap:
-                        X_in = bootstrap_count_matrix(self.X)
-                    else:
-                        X_in = self.X
-                    if self.normalize_X:
-                        X_in = normalize(X_in, norm='l1', axis=0)
+                    X_in = self._preprocess_X()
                     model = wrappedMVNMF(X_in,
                                          n_components,
                                          init=self.init,
@@ -772,7 +805,7 @@ class DenovoSig:
             self._W_raw_all[n_components] = [model._W for model in models]
             self._H_raw_all[n_components] = [model._H for model in models]
             # Save lambda_tilde's used for each mvNMF run
-            if self.method == 'nmf':
+            if self.method in ['nmf', 'cornet']:
                 self.lambda_tilde_all[n_components] = None
             elif self.method == 'mvnmf':
                 if self.mvnmf_hyperparameter_method == 'all':
@@ -1105,6 +1138,7 @@ class DenovoSig:
             method=self.method,
             normalize_X=self.normalize_X,
             bootstrap=self.bootstrap,
+            tmb_factor=self.tmb_factor,
             n_replicates=self.n_replicates,
             max_iter=self.max_iter,
             min_iter=self.min_iter,
@@ -1132,7 +1166,9 @@ class DenovoSig:
             mvnmf_delta=self.mvnmf_delta,
             mvnmf_gamma=self.mvnmf_gamma,
             mvnmf_pthresh=self.mvnmf_pthresh,
-            mvnmf_noise=self.mvnmf_noise
+            mvnmf_noise=self.mvnmf_noise,
+            # cornet specific:
+            cornet_dim_embeddings=self.cornet_dim_embeddings
         )
         return model
 
