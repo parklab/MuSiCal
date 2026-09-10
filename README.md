@@ -94,7 +94,7 @@ Three algorithms are available, selected with the `method` parameter of `musical
 | --- | --- | --- |
 | `'nmf'` | Standard NMF | Nonnegative matrix factorization with the Kullback-Leibler divergence. Simple and fast. |
 | `'mvnmf'` | Minimum-volume NMF | Resolves the non-uniqueness problem of standard NMF by penalizing the volume spanned by the signatures. Addresses the "weight-stealing" problem in signature discovery, which is particularly relevant for flat signatures. |
-| `'cornet'` | Cornet | Explicitly models the correlation structure between signatures. Excels at resolving correlated and composite signatures and mitigating cross-contaminations, especially in homogeneous datasets, smaller cohorts, or specific biological contexts such as healthy tissues. Implemented in [Sonata](https://github.com/parklab/Sonata), which must be installed separately. |
+| `'cornet'` | Cornet | Explicitly models the correlation structure between signatures instead of assuming independence among them as in NMF. Excels at sensitive signature discovery, resolving correlated and composite signatures, and mitigating cross-contaminations between discovered signatures. Implemented in [Sonata](https://github.com/parklab/Sonata), which must be installed separately. |
 
 For example:
 ```
