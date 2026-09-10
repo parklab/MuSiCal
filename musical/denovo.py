@@ -530,6 +530,7 @@ class DenovoSig:
                  conv_test_freq=None,
                  conv_test_baseline='min-iter',
                  tol=None,
+                 seed=None, # None means results are not reproducible, which is the previous behavior
                  ncpu=1,
                  verbose=0,
                  # Specific for result filtering:
@@ -592,6 +593,7 @@ class DenovoSig:
         self.tol = defaults['tol'] if tol is None else tol
         self.tmb_factor = defaults['tmb_factor'] if tmb_factor == 'auto' else tmb_factor
         self.conv_test_baseline = conv_test_baseline
+        self.seed = seed
         self.verbose=verbose
         if ncpu is None:
             ncpu = os.cpu_count()
@@ -620,6 +622,30 @@ class DenovoSig:
         # cornet specific
         self.cornet_dim_embeddings = cornet_dim_embeddings
 
+    def _seed_job(self, n_components, index_replicate):
+        """Seed the global random state for a single run.
+
+        When seed is None, we reseed from OS entropy. This is critical, because
+        otherwise the multiprocessing workers all inherit the same random state from
+        the parent process and produce identical replicates. See
+        https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
+
+        When a seed is given, the seed of each run is derived from the seed together
+        with the identity of the run, i.e., n_components and index_replicate. The
+        results therefore do not depend on ncpu, nor on the order in which the runs
+        are scheduled. Note that we do not simply add the indices to the seed, because
+        nearby seeds can produce correlated random streams, whereas replicates are
+        supposed to be independent.
+        """
+        if self.seed is None:
+            np.random.seed()
+        else:
+            np.random.seed(
+                np.random.SeedSequence(
+                    [self.seed, int(n_components), int(index_replicate)]
+                ).generate_state(1)[0]
+            )
+
     def _preprocess_X(self):
         """Prepare the input matrix for a single run.
 
@@ -643,7 +669,7 @@ class DenovoSig:
         'cannot pickle' errors.
         """
         index_replicate, n_components, lambda_tilde = parameters
-        np.random.seed() # This is critical: https://stackoverflow.com/questions/12915177/same-output-in-different-workers-in-multiprocessing
+        self._seed_job(n_components, index_replicate)
         if self.method == 'nmf':
             X_in = self._preprocess_X()
             model = NMF(X_in,
@@ -764,6 +790,9 @@ class DenovoSig:
                     workers.join()
                 elif self.mvnmf_hyperparameter_method == 'single':
                     # Run first model, with hyperparameter selection
+                    # This run is not dispatched through _job, so it is seeded here. It
+                    # uses index_replicate = 0, which the workers below do not use.
+                    self._seed_job(n_components, 0)
                     X_in = self._preprocess_X()
                     model = wrappedMVNMF(X_in,
                                          n_components,
@@ -869,6 +898,14 @@ class DenovoSig:
         }
 
         ### Select n_components
+        # OptimalK simulates random reference data for the gap statistic, so the
+        # selected n_components is random as well. Seed it when a seed is given, and
+        # restore the random state afterwards, so that postprocess() does not have a
+        # side effect on the random stream of the caller.
+        random_state = None
+        if self.seed is not None:
+            random_state = np.random.get_state()
+            np.random.seed(np.random.SeedSequence([self.seed, 0]).generate_state(1)[0])
         self.n_components, self.optimal_k_all, self.n_components_consistent, self.n_components_stable, self.pvalue_all, self.pvalue_tail_all = _select_n_components(
             self.n_components_all,
             self.samplewise_reconstruction_errors_all,
@@ -885,6 +922,8 @@ class DenovoSig:
             max_k_all=None,
             metric=self.cluster_metric
         )
+        if random_state is not None:
+            np.random.set_state(random_state)
         self.W = self.W_all[self.n_components]
         self.H = self.H_all[self.n_components]
         self.sil_score = self.sil_score_all[self.n_components]
@@ -1145,6 +1184,11 @@ class DenovoSig:
             conv_test_freq=self.conv_test_freq,
             conv_test_baseline=self.conv_test_baseline,
             tol=self.tol,
+            # seed is deliberately not carried over. The reinstantiated model is used by
+            # validate(), which reruns de novo discovery on repeatedly simulated data.
+            # Each of those replicates has to be an independent draw. Carrying the seed
+            # over would reset the random state identically on every replicate, and the
+            # simulated matrices would all end up being the same.
             ncpu=self.ncpu,
             verbose=self.verbose,
             # Specific for result filtering:
